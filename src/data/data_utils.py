@@ -193,7 +193,7 @@ def extract_csv_file_name(csv_name):
 
     return extracted_name
 
-def get_data_per_trip():
+def get_data_per_trip(dir_name="raw"):
     """
     This method reads all downloaded data and returns a list of dictionaries
     which include the pandas dataframes for each trip. Each trip DataFrame
@@ -205,7 +205,7 @@ def get_data_per_trip():
     data_frames : a list of  pandas DataFrame's in a dictionary
     """
 
-    file_path = os.path.join(get_data_dir(),"raw")
+    file_path = os.path.join(get_data_dir(),dir_name)
     tar_file_names = get_file_names(file_path)
     dfs = []
     for tar_name in tar_file_names:
