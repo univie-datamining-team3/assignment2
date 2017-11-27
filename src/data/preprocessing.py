@@ -153,7 +153,7 @@ def downsample_time_series_per_category(series, categorical_colnames, time_inter
     user specified time interval and takes care of the right interpolation of categorical variables.
     The aggregation for the new time bins will be calculated via the mean.
     To make sure that the right time column is used you have to set the time
-    columns name in time_col_name or set it as index before calling this function.
+    columns name in time_col_name.
     Otherwise it is assumed that the time column has the name time_col_name="time".
 
     For further information about examples for pandas resampling function see:
@@ -176,7 +176,8 @@ def downsample_time_series_per_category(series, categorical_colnames, time_inter
         For all possible frequencies see:
         https://stackoverflow.com/questions/17001389/pandas-resample-documentation#17001474
     time_col_name: string, default="time"
-        The name of the time column name.
+        The name of the time column name. set to "index" if you want to transform
+        the index column
     Returns
     -------
     data: returns the data with downsampled time columns, where each new bin
