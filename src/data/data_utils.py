@@ -193,12 +193,37 @@ def extract_csv_file_name(csv_name):
 
     return extracted_name
 
+def read_tar_file_from_dir(file_path):
+    """
+    This method reads a tar.gz file from a specified file path and appends each
+    .csv file to a dictionary where the key is specified as one of the VALID_NAMES:
+    ["annotation", "cell", "event", "location", "mac", "marker", "sensor"], which
+    are the names given to identify the different collected mobility data.
+
+    """
+    tar = tarfile.open(file_path, "r:gz")
+    csv_files_per_name = {}
+    for member in tar.getmembers():
+        f = tar.extractfile(member)
+        if f is not None:
+            name = extract_csv_file_name(member)
+            csv_files_per_name[name] = pd.read_csv(f, header=0, sep=',', quotechar='"')
+    tar.close()
+    return csv_files_per_name
+
 def get_data_per_trip(dir_name="raw"):
     """
     This method reads all downloaded data and returns a list of dictionaries
     which include the pandas dataframes for each trip. Each trip DataFrame
     can be accessed via its name e.g. annotation, cell, event, location,
     mac, marker, sensor.
+
+    Parameters
+    -------
+    dir_name : string, default="raw",
+        specifies the name of the directory inside the data directory from which
+        the data should be read.
+
 
     Returns
     -------
@@ -210,17 +235,10 @@ def get_data_per_trip(dir_name="raw"):
     dfs = []
     for tar_name in tar_file_names:
         path_to_tar_file = os.path.join(file_path, tar_name)
-        tar = tarfile.open(path_to_tar_file, "r:gz")
-        csv_files_per_name = {}
-        for member in tar.getmembers():
-            f = tar.extractfile(member)
-            if f is not None:
-                name = extract_csv_file_name(member)
-                csv_files_per_name[name] = pd.read_csv(f, header=0, sep=',', quotechar='"')
+        csv_files_per_name = read_tar_file_from_dir(path_to_tar_file)
         dfs.append(csv_files_per_name)
-
-    tar.close()
     return dfs
+
 
 
 def get_data_per_token(token):
@@ -239,14 +257,7 @@ def get_data_per_token(token):
     dfs = []
     for tar_name in tar_file_names:
         path_to_tar_file = os.path.join(file_path, tar_name)
-        tar = tarfile.open(path_to_tar_file, "r:gz")
-        csv_files_per_name = {}
-        for member in tar.getmembers():
-            f = tar.extractfile(member)
-            if f is not None:
-                name = extract_csv_file_name(member)
-                csv_files_per_name[name] = pd.read_csv(f, header=0, sep=',', quotechar='"')
+        csv_files_per_name = read_tar_file_from_dir(path_to_tar_file)
         dfs.append(csv_files_per_name)
 
-    tar.close()
     return dfs
