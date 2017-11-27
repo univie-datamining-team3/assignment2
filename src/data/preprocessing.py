@@ -140,6 +140,7 @@ def downsample_time_series(series, time_interval="S", time_col_name="time"):
         # In case the column has not been converted to Datetime object
         # it will be converted here.
         if series[time_col_name].dtype in [np.dtype("Int64")]:
+            series = deepcopy(series)
             series = convert_timestamps(series, time_col_names=[time_col_name])
         resampled = series.set_index(time_col_name).resample(time_interval).mean()
         resampled = resampled.reset_index()
