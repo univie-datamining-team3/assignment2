@@ -194,12 +194,14 @@ def downsample_time_series_per_category(series, categorical_colnames, time_inter
         if series[time_col_name].dtype in [np.dtype("Int64")]:
             series = deepcopy(series)
             series = _convert_timestamps_from_dataframe(series, time_col_names=[time_col_name])
+
+    # Start actual downsampling
     if isinstance(series.index, pd.DatetimeIndex) or (time_col_name in series_column_names):
         for categorical_colname_i in categorical_colnames:
             categories = list(series[categorical_colname_i].unique())
             for category_i in categories:
                 series_for_category = series[series[categorical_colname_i]==category_i]
-                resampled = downsample_time_series(series, time_interval, time_col_name)
+                resampled = downsample_time_series(series_for_category, time_interval, time_col_name)
                 resampled[categorical_colname_i] = category_i
                 result = pd.concat([result, resampled])
 
