@@ -66,15 +66,17 @@ def get_trip_summaries(all_trips, convert_time=False):
     result : pandas DataFrame
         a pandas dataframe with the summaries for each trip
     """
-    nr_of_recorded_trips_token = len(all_trips)
-    result = pd.DataFrame()
+
     if convert_time:
         all_trips_copy = preprocessing.convert_timestamps(all_trips)
     else:
         all_trips_copy = all_trips
+
+    nr_of_recorded_trips = len(all_trips)
+    result = pd.DataFrame()
     start_times = []
     end_times = []
-    for trip_i in range(0, nr_of_recorded_trips_token):
+    for trip_i in range(0, nr_of_recorded_trips):
         annotation_i = all_trips_copy[trip_i]["annotation"]
         marker_i = all_trips_copy[trip_i]["marker"]
         if annotation_i.empty:
@@ -88,7 +90,6 @@ def get_trip_summaries(all_trips, convert_time=False):
         else:
             end_times.append(0)
         result = pd.concat([result, annotation_i])
-
 
     result["Start"] = start_times
     result["Stop"] = end_times
