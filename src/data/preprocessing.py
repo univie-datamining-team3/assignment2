@@ -29,7 +29,7 @@ def _convert_timestamps_from_dataframe(df, unit="ms", time_col_names=["time","gp
 
     Returns
     -------
-    data: returns a deepcopy of the data with transformed time columns.
+    result: returns a deepcopy of the data with transformed time columns.
     """
 
     df_column_names = list(df.columns.values)
@@ -50,15 +50,15 @@ def _convert_timestamps_from_dictionary_of_dataframes(d, unit="ms", time_col_nam
     result = dict()
     for df_name, df in d.items():
         result[df_name] = _convert_timestamps_from_dataframe(df,unit=unit, time_col_names=time_col_names)
-
     return result
 
 def _convert_timestamps_from_list_of_total_trips(all_trips, unit="ms", time_col_names=["time","gpstime"]):
     """ Convenience function to loop over list af all track recordings.
     """
+    result = []
     for i, trip_i in enumerate(all_trips):
-        all_trips[i] = _convert_timestamps_from_dictionary_of_dataframes(trip_i, unit=unit, time_col_names=time_col_names)
-    return all_trips
+        result.append(_convert_timestamps_from_dictionary_of_dataframes(trip_i, unit=unit, time_col_names=time_col_names))
+    return result
 
 def convert_timestamps(data, unit="ms", time_col_names=["time","gpstime"]):
     """
@@ -83,19 +83,20 @@ def convert_timestamps(data, unit="ms", time_col_names=["time","gpstime"]):
         names of the time colums in the table which should be transformed.
     Returns
     -------
-    data: returns a deepcopy of the data with transformed time columns.
+    result: returns a deepcopy of the data with transformed time columns.
           The datatype of data will be the same as of the input type. Accepted input types are
           pandas.DataFrame, dict, list.
 
     """
+    result = pd.DataFrame()
     if type(data) is pd.DataFrame:
-        data = _convert_timestamps_from_dataframe(data, unit, time_col_names)
+        result = _convert_timestamps_from_dataframe(data, unit, time_col_names)
     elif type(data) is dict:
-        data = _convert_timestamps_from_dictionary_of_dataframes(data, unit, time_col_names)
+        result = _convert_timestamps_from_dictionary_of_dataframes(data, unit, time_col_names)
     elif type(data) is list:
-        data = _convert_timestamps_from_list_of_total_trips(data, unit, time_col_names)
+        result = _convert_timestamps_from_list_of_total_trips(data, unit, time_col_names)
 
-    return data
+    return result
 
 
 

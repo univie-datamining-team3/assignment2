@@ -4,6 +4,7 @@ import pandas as pd
 import requests
 from lxml import html
 import tarfile
+from data import preprocessing
 
 load_dotenv(find_dotenv())
 URL = str(os.environ.get("URL"))
@@ -47,7 +48,41 @@ def get_parsed_page(token):
     return parsed_page
 
 
+def get_trip_summaries(all_trips, convert_time=False):
+    """
+    This method returns a summary of all recorded trips. The summary includes start,
+    stop time, trip_length, recording mode and notes.
 
+    Parameters
+    ----------
+    all_trips : a list of all trips
+    convert_time : bool, default=False
+        indicates whether or not the time values should be converted to datetime
+        objects.
+
+    Returns
+    -------
+    result : pandas DataFrame
+        a pandas dataframe with the summaries for each trip
+    """
+    nr_of_recorded_trips_token = len(all_trips)
+    result = pd.DataFrame()
+    if convert_time:
+        all_trips_copy = preprocessing.convert_timestamps(all_trips)
+    else:
+        all_trips_copy = all_trips
+    start_times = []
+    end_times = []
+    for trip_i in range(0, nr_of_recorded_trips_token):
+        result = pd.concat([result, all_trips_copy[trip_i]["annotation"]])
+        start_times.append(all_trips_copy[trip_i]["marker"].iloc[0,0])
+        end_times.append(all_trips_copy[trip_i]["marker"].iloc[-1,0])
+
+    result["Start"] = start_times
+    result["Stop"] = end_times
+    result["trip_length"] = [end-start for end,start in zip(end_times,start_times)]
+    result = result.reset_index(drop=True)
+    return result
 
 def list_recorded_data(token, file_ending=".gz", remove_file_ending=True):
     """
