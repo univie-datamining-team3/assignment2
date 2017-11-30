@@ -1,6 +1,7 @@
 import os
 from dotenv import find_dotenv, load_dotenv
 import pandas as pd
+import numpy as np
 import requests
 from lxml import html
 import tarfile
@@ -74,12 +75,24 @@ def get_trip_summaries(all_trips, convert_time=False):
     start_times = []
     end_times = []
     for trip_i in range(0, nr_of_recorded_trips_token):
-        result = pd.concat([result, all_trips_copy[trip_i]["annotation"]])
-        start_times.append(all_trips_copy[trip_i]["marker"].iloc[0,0])
-        end_times.append(all_trips_copy[trip_i]["marker"].iloc[-1,0])
+        annotation_i = all_trips_copy[trip_i]["annotation"]
+        marker_i = all_trips_copy[trip_i]["marker"]
+        if annotation_i.empty:
+             annotation_i.loc[0] = [None,"empty","empty"]
+        if "START" in marker_i["marker"].unique():
+            start_times.append(marker_i.iloc[0,0])
+        else:
+            start_times.append(0)
+        if "STOP" in marker_i["marker"].unique():
+            end_times.append(marker_i.iloc[-1,0])
+        else:
+            end_times.append(0)
+        result = pd.concat([result, annotation_i])
+
 
     result["Start"] = start_times
     result["Stop"] = end_times
+    result = result.drop("time", axis=1)
     result["trip_length"] = [end-start for end,start in zip(end_times,start_times)]
     result = result.reset_index(drop=True)
     return result
