@@ -102,7 +102,7 @@ class Transformation:
         """
         csv_name = str(csv_name)
         extracted_name = ""
-        for name in Utils.VALID_NAMES:
+        for name in Transformation.VALID_NAMES:
             if name in csv_name:
                 extracted_name = name
                 return extracted_name
@@ -123,7 +123,7 @@ class Transformation:
         for member in tar.getmembers():
             f = tar.extractfile(member)
             if f is not None:
-                name = Utils.extract_csv_file_name(member)
+                name = Transformation.extract_csv_file_name(member)
                 csv_files_per_name[name] = pd.read_csv(f, header=0, sep=',', quotechar='"')
         tar.close()
         return csv_files_per_name
@@ -148,12 +148,12 @@ class Transformation:
         data_frames : a list of  pandas DataFrame's in a dictionary
         """
 
-        file_path = os.path.join(Utils.get_data_dir(), dir_name)
-        tar_file_names = Utils.get_file_names(file_path)
+        file_path = os.path.join(Transformation.get_data_dir(), dir_name)
+        tar_file_names = Transformation.get_file_names(file_path)
         dfs = []
         for tar_name in tar_file_names:
             path_to_tar_file = os.path.join(file_path, tar_name)
-            csv_files_per_name = Utils.read_tar_file_from_dir(path_to_tar_file)
+            csv_files_per_name = Transformation.read_tar_file_from_dir(path_to_tar_file)
             dfs.append(csv_files_per_name)
         return dfs
 
@@ -169,12 +169,12 @@ class Transformation:
         -------
         data_frames : a list of  pandas DataFrame's in a dictionary
         """
-        file_path = os.path.join(Utils.get_data_dir(), "raw")
-        tar_file_names = Utils.get_file_names_for(file_path, token)
+        file_path = os.path.join(DatasetDownload.get_data_dir(), "raw")
+        tar_file_names = DatasetDownload.get_file_names_for(file_path, token)
         dfs = []
         for tar_name in tar_file_names:
             path_to_tar_file = os.path.join(file_path, tar_name)
-            csv_files_per_name = Utils.read_tar_file_from_dir(path_to_tar_file)
+            csv_files_per_name = Transformation.read_tar_file_from_dir(path_to_tar_file)
             dfs.append(csv_files_per_name)
 
         return dfs
