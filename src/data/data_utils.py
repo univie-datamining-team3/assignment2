@@ -5,7 +5,7 @@ from .preprocessing import Preprocessing
 from .download import DatasetDownload
 
 
-class Utils:
+class Transformation:
     """
     Class containing various methods for reading and transforming data.
     """
