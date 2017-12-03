@@ -3,16 +3,14 @@ import numpy as np
 from copy import deepcopy
 
 
-class Preprocessing:
+class Preprocessor:
     """
     Class for preprocessing routines on the mobility data set.
     """
 
-    def __init__(self):
-        pass
-
     @staticmethod
     def preprocess():
+        # todo
         print("Running preprocessing")
 
     @staticmethod
@@ -55,7 +53,7 @@ class Preprocessing:
         """
         result = dict()
         for df_name, df in d.items():
-            result[df_name] = Preprocessing._convert_timestamps_from_dataframe(df,unit=unit, time_col_names=time_col_names)
+            result[df_name] = Preprocessor._convert_timestamps_from_dataframe(df,unit=unit, time_col_names=time_col_names)
         return result
 
     @staticmethod
@@ -64,7 +62,7 @@ class Preprocessing:
         """
         result = []
         for i, trip_i in enumerate(all_trips):
-            result.append(Preprocessing._convert_timestamps_from_dictionary_of_dataframes(trip_i, unit=unit, time_col_names=time_col_names))
+            result.append(Preprocessor._convert_timestamps_from_dictionary_of_dataframes(trip_i, unit=unit, time_col_names=time_col_names))
         return result
 
     @staticmethod
@@ -98,11 +96,11 @@ class Preprocessing:
         """
         result = pd.DataFrame()
         if type(data) is pd.DataFrame:
-            result = Preprocessing._convert_timestamps_from_dataframe(data, unit, time_col_names)
+            result = Preprocessor._convert_timestamps_from_dataframe(data, unit, time_col_names)
         elif type(data) is dict:
-            result = Preprocessing._convert_timestamps_from_dictionary_of_dataframes(data, unit, time_col_names)
+            result = Preprocessor._convert_timestamps_from_dictionary_of_dataframes(data, unit, time_col_names)
         elif type(data) is list:
-            result = Preprocessing._convert_timestamps_from_list_of_total_trips(data, unit, time_col_names)
+            result = Preprocessor._convert_timestamps_from_list_of_total_trips(data, unit, time_col_names)
 
         return result
 
@@ -149,7 +147,7 @@ class Preprocessing:
             # it will be converted here.
             if series[time_col_name].dtype in [np.dtype("Int64")]:
                 series = deepcopy(series)
-                series = Preprocessing.convert_timestamps(series, time_col_names=[time_col_name])
+                series = Preprocessor.convert_timestamps(series, time_col_names=[time_col_name])
             resampled = series.set_index(time_col_name).resample(time_interval).mean()
             resampled = resampled.reset_index()
         else:
@@ -203,7 +201,7 @@ class Preprocessing:
         if time_col_name in series_column_names:
             if series[time_col_name].dtype in [np.dtype("Int64")]:
                 series = deepcopy(series)
-                series = Preprocessing._convert_timestamps_from_dataframe(series, time_col_names=[time_col_name])
+                series = Preprocessor._convert_timestamps_from_dataframe(series, time_col_names=[time_col_name])
 
         # Start actual downsampling
         if isinstance(series.index, pd.DatetimeIndex) or (time_col_name in series_column_names):
@@ -211,7 +209,7 @@ class Preprocessing:
                 categories = list(series[categorical_colname_i].unique())
                 for category_i in categories:
                     series_for_category = series[series[categorical_colname_i]==category_i]
-                    resampled = Preprocessing.downsample_time_series(series_for_category, time_interval, time_col_name)
+                    resampled = Preprocessor.downsample_time_series(series_for_category, time_interval, time_col_name)
                     resampled[categorical_colname_i] = category_i
                     result = pd.concat([result, resampled])
 

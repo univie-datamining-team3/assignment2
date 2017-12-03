@@ -1,9 +1,10 @@
 import os
 import requests
 from lxml import html
+from .file_reading import FileReader
 
 
-class DatasetDownload:
+class DatasetDownloader:
     """
     Class containing methods and attributes for pulling and preprocessing data.
     """
@@ -43,8 +44,8 @@ class DatasetDownload:
         ----------
         token : token to access the data
         """
-        url_with_token = DatasetDownload.URL + str(token)
-        response = requests.get(url_with_token, auth=(DatasetDownload.USERNAME, DatasetDownload.PASSWORD))
+        url_with_token = DatasetDownloader.URL + str(token)
+        response = requests.get(url_with_token, auth=(DatasetDownloader.USERNAME, DatasetDownloader.PASSWORD))
         parsed_page = None
         if response.status_code == 200:
             parsed_page = html.fromstring(response.content)
@@ -58,11 +59,11 @@ class DatasetDownload:
 
         """
 
-        response = requests.get(url, auth=(DatasetDownload.USERNAME, DatasetDownload.PASSWORD))
+        response = requests.get(url, auth=(DatasetDownloader.USERNAME, DatasetDownloader.PASSWORD))
         if response.status_code == 200:
-            extracted_file_name = url.replace(DatasetDownload.URL,"").partition("/")[2]
-            file_path = os.path.join(DatasetDownload.get_data_dir(),"raw",str(token))
-            DatasetDownload.setup_directory(file_path)
+            extracted_file_name = url.replace(DatasetDownloader.URL,"").partition("/")[2]
+            file_path = os.path.join(DatasetDownloader.get_data_dir(),"raw",str(token))
+            DatasetDownloader.setup_directory(file_path)
             print("Downloaded ",extracted_file_name)
             file_path = os.path.join(file_path, extracted_file_name)
             with open(file_path, 'wb') as fd:
@@ -86,14 +87,14 @@ class DatasetDownload:
 
         """
         if file_names == None:
-            recorded_data = DatasetDownload.list_recorded_data(token, file_ending=file_ending,
+            recorded_data = FileReader.list_recorded_data(token, file_ending=file_ending,
                                                remove_file_ending=False)
             file_names = recorded_data["full_name"]
 
-        url_with_token = DatasetDownload.URL + str(token)
+        url_with_token = DatasetDownloader.URL + str(token)
         for csv_file_name in file_names:
             full_url = url_with_token + "/" + str(csv_file_name)
-            DatasetDownload.download_file(full_url, token)
+            DatasetDownloader.download_file(full_url, token)
 
     @staticmethod
     def get_file_names_for(dir_name, token, file_ending=".gz"):
@@ -115,7 +116,7 @@ class DatasetDownload:
         file_names = list()
         if os.path.exists(dir_name):
             if token != None:
-                file_names = DatasetDownload.get_file_names_for(dir_name, token)
+                file_names = DatasetDownloader.get_file_names_for(dir_name, token)
             else:
                 for root, dirs, files in os.walk(dir_name, topdown=False):
                     for directory_i in dirs:
@@ -135,4 +136,4 @@ class DatasetDownload:
         tokens = [os.environ.get("KEY_RAPHAEL"), os.environ.get("KEY_MORITZ"),
                   os.environ.get("KEY_LUKAS")]
         for token in tokens:
-            DatasetDownload.download_data_sets(token)
+            DatasetDownloader.download_data_sets(token)

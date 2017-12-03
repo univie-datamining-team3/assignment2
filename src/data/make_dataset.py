@@ -6,10 +6,9 @@ Script for applying the data processing tasks
 # -*- coding: utf-8 -*-
 import os
 import logging
-#from dotenv import find_dotenv, load_dotenv
-from .download import DatasetDownload
-from .preprocessing import Preprocessing
 from dotenv import find_dotenv, load_dotenv
+from .download import DatasetDownloader
+from .preprocessing import Preprocessor
 
 
 def main():
@@ -22,15 +21,15 @@ def main():
 
     # Set environment variables.
     load_dotenv(find_dotenv())
-    DatasetDownload.URL = str(os.environ.get("URL"))
-    DatasetDownload.USERNAME = str(os.environ.get("LOGINNAME"))
-    DatasetDownload.PASSWORD = str(os.environ.get("LOGINPASSWORD"))
+    DatasetDownloader.URL = str(os.environ.get("URL"))
+    DatasetDownloader.USERNAME = str(os.environ.get("LOGINNAME"))
+    DatasetDownloader.PASSWORD = str(os.environ.get("LOGINPASSWORD"))
 
-    DatasetDownload.download_all()
+    DatasetDownloader.download_all()
     logger.info('downloading was successfull')
 
     # Not implemented yet
-    Preprocessing.preprocess()
+    Preprocessor.preprocess()
 
 if __name__ == '__main__':
     log_fmt = '%(asctime)s - %(name)s - %(levelname)s - %(message)s'

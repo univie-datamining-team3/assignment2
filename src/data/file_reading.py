@@ -1,11 +1,11 @@
 import os
 import pandas as pd
 import tarfile
-from .preprocessing import Preprocessing
-from .download import DatasetDownload
+from .preprocessing import Preprocessor
+from .download import DatasetDownloader
 
 
-class Transformation:
+class FileReader:
     """
     Class containing various methods for reading and transforming data.
     """
@@ -31,7 +31,7 @@ class Transformation:
         nr_of_recorded_trips_token = len(all_trips)
         result = pd.DataFrame()
         if convert_time:
-            all_trips_copy = Preprocessing.convert_timestamps(all_trips)
+            all_trips_copy = Preprocessor.convert_timestamps(all_trips)
         else:
             all_trips_copy = all_trips
         start_times = []
@@ -67,7 +67,7 @@ class Transformation:
         recorded_data : pandas DataFrame
             the recorded data with information on last modified and size
         """
-        parsed_page = DatasetDownload.get_parsed_page(token)
+        parsed_page = DatasetDownloader.get_parsed_page(token)
         table_content = parsed_page.xpath('//table//text()')
         track_records = []
         last_modified = []
@@ -102,7 +102,7 @@ class Transformation:
         """
         csv_name = str(csv_name)
         extracted_name = ""
-        for name in Transformation.VALID_NAMES:
+        for name in FileReader.VALID_NAMES:
             if name in csv_name:
                 extracted_name = name
                 return extracted_name
@@ -123,7 +123,7 @@ class Transformation:
         for member in tar.getmembers():
             f = tar.extractfile(member)
             if f is not None:
-                name = Transformation.extract_csv_file_name(member)
+                name = FileReader.extract_csv_file_name(member)
                 csv_files_per_name[name] = pd.read_csv(f, header=0, sep=',', quotechar='"')
         tar.close()
         return csv_files_per_name
@@ -148,12 +148,12 @@ class Transformation:
         data_frames : a list of  pandas DataFrame's in a dictionary
         """
 
-        file_path = os.path.join(Transformation.get_data_dir(), dir_name)
-        tar_file_names = Transformation.get_file_names(file_path)
+        file_path = os.path.join(FileReader.get_data_dir(), dir_name)
+        tar_file_names = FileReader.get_file_names(file_path)
         dfs = []
         for tar_name in tar_file_names:
             path_to_tar_file = os.path.join(file_path, tar_name)
-            csv_files_per_name = Transformation.read_tar_file_from_dir(path_to_tar_file)
+            csv_files_per_name = FileReader.read_tar_file_from_dir(path_to_tar_file)
             dfs.append(csv_files_per_name)
         return dfs
 
@@ -169,12 +169,12 @@ class Transformation:
         -------
         data_frames : a list of  pandas DataFrame's in a dictionary
         """
-        file_path = os.path.join(DatasetDownload.get_data_dir(), "raw")
-        tar_file_names = DatasetDownload.get_file_names_for(file_path, token)
+        file_path = os.path.join(DatasetDownloader.get_data_dir(), "raw")
+        tar_file_names = DatasetDownloader.get_file_names_for(file_path, token)
         dfs = []
         for tar_name in tar_file_names:
             path_to_tar_file = os.path.join(file_path, tar_name)
-            csv_files_per_name = Transformation.read_tar_file_from_dir(path_to_tar_file)
+            csv_files_per_name = FileReader.read_tar_file_from_dir(path_to_tar_file)
             dfs.append(csv_files_per_name)
 
         return dfs
