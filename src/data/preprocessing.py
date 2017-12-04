@@ -1,6 +1,9 @@
 import pandas as pd
 import numpy as np
 from copy import deepcopy
+import os
+from data.download import DatasetDownloader
+import tarfile
 
 
 class Preprocessor:
@@ -9,9 +12,43 @@ class Preprocessor:
     """
 
     @staticmethod
-    def preprocess():
+    def preprocess(tokens):
+        """
+        Executes all preprocessing steps.
+        :param tokens: List with keys of tokens to preprocess.
+        :return:
+        """
         # todo
         print("Running preprocessing")
+        pd.set_option('display.width', 1000)
+        pd.set_option('display.max_columns', 20)
+
+
+        recorded_file_names = DatasetDownloader.get_file_names(os.path.join(DatasetDownloader.get_data_dir(), "raw"))
+
+        # Get travel data per token, remove dataframes without annotations.
+        dfs = Preprocessor._remove_dataframes_without_annotation(
+            Preprocessor.get_data_per_token(tokens[0])
+        )
+
+        Preprocessor.get_trip_summaries(dfs, convert_time=True)
+
+    @staticmethod
+    def _remove_dataframes_without_annotation(dataframes):
+        """
+        Removes dataframes w/o annotation data (since we don't know the transport mode and hence can't use it for
+        training.
+        :param dataframes: ist of dataframes with trip data.
+        :return:
+        """
+
+        dataframes_with_annotations = []
+        for df in dataframes:
+            if not df["annotation"].empty:
+                dataframes_with_annotations.append(df)
+
+        return dataframes_with_annotations
+
 
     @staticmethod
     def _convert_timestamps_from_dataframe(df, unit="ms", time_col_names=["time", "gpstime"]):
@@ -222,3 +259,133 @@ class Preprocessor:
         else:
             result = series
         return result
+
+    @staticmethod
+    def get_trip_summaries(all_trips, convert_time=False):
+        """
+        This method returns a summary of all recorded trips. The summary includes start,
+        stop time, trip_length, recording mode and notes.
+
+        Parameters
+        ----------
+        all_trips : a list of all trips
+        convert_time : bool, default=False
+            indicates whether or not the time values should be converted to datetime
+            objects.
+
+        Returns
+        -------
+        result : pandas DataFrame
+            a pandas dataframe with the summaries for each trip
+        """
+        nr_of_recorded_trips_token = len(all_trips)
+        result = pd.DataFrame()
+        if convert_time:
+            all_trips_copy = Preprocessor.convert_timestamps(all_trips)
+        else:
+            all_trips_copy = all_trips
+        start_times = []
+        end_times = []
+        for trip_i in range(0, nr_of_recorded_trips_token):
+            result = pd.concat([result, all_trips_copy[trip_i]["annotation"]])
+            start_times.append(all_trips_copy[trip_i]["marker"].iloc[0,0])
+            end_times.append(all_trips_copy[trip_i]["marker"].iloc[-1,0])
+
+        result["Start"] = start_times
+        result["Stop"] = end_times
+        result["trip_length"] = [end-start for end,start in zip(end_times,start_times)]
+        result = result.reset_index(drop=True)
+
+        return result
+
+    @staticmethod
+    def extract_csv_file_name(csv_name):
+        """
+        Extracts the name from the csv file name e.g. annotation, cell, event, location,
+        mac, marker, sensor.
+
+        Parameters
+        ----------
+        csv_name: full name of the csv file in tar.gz directory
+        Returns
+        -------
+        extracted_name: string,
+        """
+        csv_name = str(csv_name)
+        extracted_name = ""
+        for name in DatasetDownloader.VALID_NAMES:
+            if name in csv_name:
+                extracted_name = name
+                return extracted_name
+
+        return extracted_name
+
+    @staticmethod
+    def read_tar_file_from_dir(file_path):
+        """
+        This method reads a tar.gz file from a specified file path and appends each
+        .csv file to a dictionary where the key is specified as one of the VALID_NAMES:
+        ["annotation", "cell", "event", "location", "mac", "marker", "sensor"], which
+        are the names given to identify the different collected mobility data.
+
+        """
+        tar = tarfile.open(file_path, "r:gz")
+        csv_files_per_name = {}
+        for member in tar.getmembers():
+            f = tar.extractfile(member)
+            if f is not None:
+                name = Preprocessor.extract_csv_file_name(member)
+                csv_files_per_name[name] = pd.read_csv(f, header=0, sep=',', quotechar='"')
+        tar.close()
+        return csv_files_per_name
+
+    @staticmethod
+    def get_data_per_trip(dir_name="raw"):
+        """
+        This method reads all downloaded data and returns a list of dictionaries
+        which include the pandas dataframes for each trip. Each trip DataFrame
+        can be accessed via its name e.g. annotation, cell, event, location,
+        mac, marker, sensor.
+
+        Parameters
+        -------
+        dir_name : string, default="raw",
+            specifies the name of the directory inside the data directory from which
+            the data should be read.
+
+
+        Returns
+        -------
+        data_frames : a list of  pandas DataFrame's in a dictionary
+        """
+
+        file_path = os.path.join(Preprocessor.get_data_dir(), dir_name)
+        tar_file_names = Preprocessor.get_file_names(file_path)
+        dfs = []
+        for tar_name in tar_file_names:
+            path_to_tar_file = os.path.join(file_path, tar_name)
+            csv_files_per_name = Preprocessor.read_tar_file_from_dir(path_to_tar_file)
+            dfs.append(csv_files_per_name)
+        return dfs
+
+    @staticmethod
+    def get_data_per_token(token):
+        """
+        This method reads the downloaded data for one user and returns a list of dictionaries
+        which include the pandas dataframes for each trip. Each trip DataFrame
+        can be accessed via its name e.g. annotation, cell, event, location,
+        mac, marker, sensor.
+
+        Returns
+        -------
+        data_frames : a list of  pandas DataFrame's in a dictionary
+        """
+        file_path = os.path.join(DatasetDownloader.get_data_dir(), "raw")
+        tar_file_names = DatasetDownloader.get_file_names_for(file_path, token)
+        dfs = []
+        for tar_name in tar_file_names:
+            path_to_tar_file = os.path.join(file_path, tar_name)
+            csv_files_per_name = Preprocessor.read_tar_file_from_dir(path_to_tar_file)
+            dfs.append(csv_files_per_name)
+
+        return dfs

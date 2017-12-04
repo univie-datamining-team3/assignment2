@@ -7,8 +7,8 @@ Script for applying the data processing tasks
 import os
 import logging
 from dotenv import find_dotenv, load_dotenv
-from .download import DatasetDownloader
-from .preprocessing import Preprocessor
+from data.download import DatasetDownloader
+from data.preprocessing import Preprocessor
 
 
 def main():
@@ -25,11 +25,11 @@ def main():
     DatasetDownloader.USERNAME = str(os.environ.get("LOGINNAME"))
     DatasetDownloader.PASSWORD = str(os.environ.get("LOGINPASSWORD"))
 
-    DatasetDownloader.download_all()
+    # DatasetDownloader.download_all()
     logger.info('downloading was successfull')
 
     # Not implemented yet
-    Preprocessor.preprocess()
+    Preprocessor.preprocess([os.environ.get("KEY_RAPHAEL")])
 
 if __name__ == '__main__':
     log_fmt = '%(asctime)s - %(name)s - %(levelname)s - %(message)s'

@@ -1,7 +1,7 @@
 import os
 import requests
 from lxml import html
-from .file_reading import FileReader
+import pandas as pd
 
 
 class DatasetDownloader:
@@ -87,8 +87,11 @@ class DatasetDownloader:
 
         """
         if file_names == None:
-            recorded_data = FileReader.list_recorded_data(token, file_ending=file_ending,
-                                               remove_file_ending=False)
+            recorded_data = DatasetDownloader.list_recorded_data(
+                token,
+                file_ending=file_ending,
+                remove_file_ending=False
+            )
             file_names = recorded_data["full_name"]
 
         url_with_token = DatasetDownloader.URL + str(token)
@@ -107,6 +110,45 @@ class DatasetDownloader:
             if file.endswith(file_ending):
                 file_names.append(os.path.join(str(token),file))
         return file_names
+
+    @staticmethod
+    def list_recorded_data(token, file_ending=".gz", remove_file_ending=True):
+        """
+        This method lists all recorded trips in one token directory.
+
+        Parameters
+        ----------
+        token : token to access the data
+        file_ending: string, optional, default=".gz"
+                    file ending of the downloaded file
+        remove_file_ending: bool, optional, default=True
+                            Indicate wether the file endings should be removed
+                            or not.
+
+        Returns
+        -------
+        recorded_data : pandas DataFrame
+            the recorded data with information on last modified and size
+        """
+        parsed_page = DatasetDownloader.get_parsed_page(token)
+        table_content = parsed_page.xpath('//table//text()')
+        track_records = []
+        last_modified = []
+        size = []
+        for i, name in enumerate(table_content):
+            if name.endswith(file_ending):
+                if remove_file_ending:
+                    name_without_file_ending = name.partition(".")[0]
+                    track_records.append(name_without_file_ending)
+                else:
+                    track_records.append(name)
+                last_modified.append(table_content[i+1])
+                size.append(table_content[i+2])
+
+        recorded_data = pd.DataFrame({"full_name":track_records,
+                                      "last_modified":last_modified,
+                                      "size":size})
+        return recorded_data
 
     @staticmethod
     def get_file_names(dir_name, token=None, file_ending=".gz"):
