@@ -74,3 +74,6 @@ target/
 
 # exclude maps with gps data
 reports/maps/
+
+# Exclude nemo's .directory files.
+.directory
