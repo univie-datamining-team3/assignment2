@@ -4,6 +4,7 @@ from copy import deepcopy
 import os
 from data.download import DatasetDownloader
 import tarfile
+import sys
 
 
 class Preprocessor:
@@ -16,22 +17,44 @@ class Preprocessor:
         """
         Executes all preprocessing steps.
         :param tokens: List with keys of tokens to preprocess.
-        :return:
+        :return: Dictionary with preprocessed data. Specified tokens are used as keys.
         """
-        # todo
-        print("Running preprocessing")
         pd.set_option('display.width', 1000)
         pd.set_option('display.max_columns', 20)
 
+        preprocessed_data = {}
 
-        recorded_file_names = DatasetDownloader.get_file_names(os.path.join(DatasetDownloader.get_data_dir(), "raw"))
+        for token in tokens:
+            # 1. Get travel data per token, remove dataframes without annotations.
+            dfs = Preprocessor._remove_dataframes_without_annotation(
+                Preprocessor.get_data_per_token(tokens[0])
+            )
 
-        # Get travel data per token, remove dataframes without annotations.
-        dfs = Preprocessor._remove_dataframes_without_annotation(
-            Preprocessor.get_data_per_token(tokens[0])
-        )
+            # 2. Remove trips less than 10 minutes long.
+            dfs = Preprocessor._remove_dataframes_by_duration_limit(dfs, 10 * 60)
 
-        Preprocessor.get_trip_summaries(dfs, convert_time=True)
+            # 3. Resample time series.
+            resampled_sensor_values = Preprocessor._resample_trip_time_series(dfs)
+
+            preprocessed_data[token] = {}
+            preprocessed_data["dataframes"] = dfs
+            preprocessed_data["resampled_sensor_data"] = resampled_sensor_values
+
+        return preprocessed_data
+
+    @staticmethod
+    def _resample_trip_time_series(dataframes):
+        """
+        Resamples trips' time series to hardcoded value (? per second).
+        Returns list of dataframes with resampled time series.
+        :param dataframes: List of dataframes with trip information.
+        :return:
+        """
+
+        return [
+            Preprocessor.downsample_time_series_per_category(df["sensor"], categorical_colnames=["sensor"])
+            for df in dataframes
+        ]
 
     @staticmethod
     def _remove_dataframes_without_annotation(dataframes):
@@ -42,13 +65,33 @@ class Preprocessor:
         :return:
         """
 
-        dataframes_with_annotations = []
+        filtered_dataframes = []
         for df in dataframes:
             if not df["annotation"].empty:
-                dataframes_with_annotations.append(df)
+                filtered_dataframes.append(df)
 
-        return dataframes_with_annotations
+        return filtered_dataframes
 
+    @staticmethod
+    def _remove_dataframes_by_duration_limit(dataframes, min_duration=0, max_duration=sys.maxsize):
+        """
+        Removes dataframes outside the defined time thresholds.
+        :param dataframes: ist of dataframes with trip data.
+        :param min_duration: Minimum duration in seconds.
+        :param max_duration: Maximum duration in seconds.
+        :return:
+        """
+
+        # Fetch summaries for all trips.
+        trip_summaries = Preprocessor.get_trip_summaries(dataframes, convert_time=True)
+
+        filtered_dataframes = []
+        for i, df in enumerate(dataframes):
+            trip_length = trip_summaries.iloc[i]["trip_length"].total_seconds()
+            if trip_length >= min_duration and trip_length >= min_duration:
+                filtered_dataframes.append(df)
+
+        return filtered_dataframes
 
     @staticmethod
     def _convert_timestamps_from_dataframe(df, unit="ms", time_col_names=["time", "gpstime"]):
