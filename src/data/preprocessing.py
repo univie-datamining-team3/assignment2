@@ -35,8 +35,8 @@ class Preprocessor:
             resampled_sensor_values = Preprocessor._resample_trip_time_series(dfs)
 
             preprocessed_data[token] = {}
-            preprocessed_data["dataframes"] = dfs
-            preprocessed_data["resampled_sensor_data"] = resampled_sensor_values
+            preprocessed_data[token]["dataframes"] = dfs
+            preprocessed_data[token]["resampled_sensor_data"] = resampled_sensor_values
 
         return preprocessed_data
 
