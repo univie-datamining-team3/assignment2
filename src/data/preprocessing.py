@@ -19,8 +19,6 @@ class Preprocessor:
         :param tokens: List with keys of tokens to preprocess.
         :return: Dictionary with preprocessed data. Specified tokens are used as keys.
         """
-        pd.set_option('display.width', 1000)
-        pd.set_option('display.max_columns', 20)
 
         preprocessed_data = {}
 
