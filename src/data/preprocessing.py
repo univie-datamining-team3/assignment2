@@ -59,7 +59,7 @@ class Preprocessor:
         for i, df in enumerate(dataframes):
             # Assuming "notes" only has one entry per trip and scripted trips' notes contain the word "scripted",
             # while ordinary trips' notes don't.
-            if "scripted" in str(df["annotation"]["notes"][0]):
+            if "scripted" in str(df["annotation"]["notes"][0]).lower():
                 for dataframe_name in list_of_dataframe_names_to_cut:
                     # Cut off time series data.
                     dataframes[i][dataframe_name] = Preprocessor._cut_off_start_and_end_in_dataframe(
