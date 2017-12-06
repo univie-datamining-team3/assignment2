@@ -25,6 +25,7 @@ def main():
     DatasetDownloader.USERNAME = str(os.environ.get("LOGINNAME"))
     DatasetDownloader.PASSWORD = str(os.environ.get("LOGINPASSWORD"))
 
+    # Download data.
     # DatasetDownloader.download_all()
     logger.info('downloading was successfull')
 

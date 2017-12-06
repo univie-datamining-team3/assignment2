@@ -25,7 +25,7 @@ class Preprocessor:
         for token in tokens:
             # 1. Get travel data per token, remove dataframes without annotations.
             dfs = Preprocessor._remove_dataframes_without_annotation(
-                Preprocessor.get_data_per_token(tokens[0])
+                Preprocessor.get_data_per_token(token)
             )
 
             # 2. Remove trips less than 10 minutes long.
@@ -34,6 +34,11 @@ class Preprocessor:
             # 3. Resample time series.
             resampled_sensor_values = Preprocessor._resample_trip_time_series(dfs)
 
+            # 4. Cut first and last 30 seconds from scripted trips.
+            dfs = Preprocessor._cut_off_start_and_end_in_dataframes(
+                dataframes=dfs, list_of_dataframe_names_to_cut=["sensor", "location"], cutoff_in_seconds=30
+            )
+
             preprocessed_data[token] = {}
             preprocessed_data[token]["dataframes"] = dfs
             preprocessed_data[token]["resampled_sensor_data"] = resampled_sensor_values
@@ -41,12 +46,64 @@ class Preprocessor:
         return preprocessed_data
 
     @staticmethod
+    def _cut_off_start_and_end_in_dataframes(dataframes, list_of_dataframe_names_to_cut, cutoff_in_seconds=30):
+        """
+        Auxiliary method with boilerplate code for cutting off start and end of timeseries in specified list of
+        dataframes.
+        :param dataframes:
+        :param list_of_dataframe_names_to_cut:
+        :param cutoff_in_seconds:
+        :return: List of cleaned/cut dataframes.
+        """
+
+        for i, df in enumerate(dataframes):
+            # Assuming "notes" only has one entry per trip and scripted trips' notes contain the word "scripted",
+            # while ordinary trips' notes don't.
+            if "scripted" in str(df["annotation"]["notes"][0]):
+                for dataframe_name in list_of_dataframe_names_to_cut:
+                    # Cut off time series data.
+                    dataframes[i][dataframe_name] = Preprocessor._cut_off_start_and_end_in_dataframe(
+                        dataframe=df[dataframe_name], cutoff_in_seconds=cutoff_in_seconds
+                    )
+
+        return dataframes
+
+    @staticmethod
+    def _cut_off_start_and_end_in_dataframe(dataframe, cutoff_in_seconds=30):
+        """
+        Removes entries with first and last cutoff_in_seconds in series.
+        Assumes time in dataframe is specified in milliseconds.
+        :param dataframe: Dataframe containing time series data. Expects specified dataframe to have a column "time".
+        :param cutoff_in_seconds:
+        :return: Cleaned dataframe.
+        """
+
+        # Calculate time thresholds.
+        lower_time_threshold = dataframe.head(1)["time"].values[0]
+        upper_time_threshold = dataframe.tail(1)["time"].values[0]
+
+        # print(upper_time_threshold - lower_time_threshold / 1000)
+        # print("---------------")
+
+        # Assuming time is specified as UTC timestamp in milliseconds, so let's convert the cutoff to milliseconds.
+        cutoff_in_seconds *= 1000
+
+        # Drop all rows with a time value less than 30 seconds after the initial entry and less than 30 seconds
+        # before the last entry.
+        dataframe = dataframe[
+            (dataframe["time"] >= lower_time_threshold + cutoff_in_seconds) &
+            (dataframe["time"] <= upper_time_threshold + cutoff_in_seconds)
+        ]
+
+        return dataframe
+
+    @staticmethod
     def _resample_trip_time_series(dataframes):
         """
         Resamples trips' time series to hardcoded value (? per second).
         Returns list of dataframes with resampled time series.
         :param dataframes: List of dataframes with trip information.
-        :return:
+        :return: List of resampled time series.
         """
 
         return [
