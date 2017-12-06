@@ -82,9 +82,6 @@ class Preprocessor:
         lower_time_threshold = dataframe.head(1)["time"].values[0]
         upper_time_threshold = dataframe.tail(1)["time"].values[0]
 
-        # print(upper_time_threshold - lower_time_threshold / 1000)
-        # print("---------------")
-
         # Assuming time is specified as UTC timestamp in milliseconds, so let's convert the cutoff to milliseconds.
         cutoff_in_seconds *= 1000
 
