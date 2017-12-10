@@ -5,6 +5,9 @@ import os
 from data.download import DatasetDownloader
 import tarfile
 import sys
+from scipy.interpolate import interp1d
+from pyts.visualization import plot_paa
+from pyts.transformation import PAA
 
 
 class Preprocessor:
@@ -484,3 +487,68 @@ class Preprocessor:
             dfs.append(csv_files_per_name)
 
         return dfs
+
+    @staticmethod
+    def approx_sensor(acc, hz=None, atd_ms=None):
+        """
+        This method interpolates the observations at equidistant time stamps.
+        e.g. specifying hz=20 will result in a data frame containing 20 observaitons per second.
+
+        Returns
+        -------
+        df : a pandas DataFrame containing the interpolated series
+        """
+        # interpolate to a common sampling rate
+        #
+        # acc ... data.table(time,x,y,z)
+        # atd_ms ... approximated time difference in milliseconds, default value = 10
+
+        if(hz is None and atd_ms is None):
+            atd_ms = 10
+        elif (hz is not None and atd_ms is None):
+            atd_ms = 1000/hz
+        elif (hz is not None and atd_ms is not None):
+            print("hz is overruled with atd_ms")
+
+        new_time = np.arange(acc['time'][0], acc['time'][len(acc['time'])-1], atd_ms)
+
+        f_ax = interp1d(acc['time'],acc['x'])
+        ax = list(f_ax(new_time))
+        f_ay = interp1d(acc['time'],acc['y'])
+        ay = list(f_ay(new_time))
+        f_az = interp1d(acc['time'],acc['z'])
+        az = list(f_az(new_time))
+
+        df = pd.DataFrame({
+            'time':new_time,
+            'x':ax,
+            'y':ay,
+            'z':az
+        })
+        return df
+
+    @staticmethod
+    def normalize_trip(trip, w_size=20):
+        """
+        This method performs a Piecewise Aggregate Approximation of a trip.
+        trip... a dataframe which should be used
+        w_size... the bin size.
+
+        REQUIREMENT: package 'future'
+        
+        Returns
+        -------
+        df : a pandas DataFrame containing the interpolated series
+        """
+        paa = PAA(window_size=w_size, output_size=None, overlapping=False)
+        container = list()
+        for label in trip.columns:
+            arr = np.array([trip[label]])
+            transf = paa.transform(arr)
+            container.append(list(transf[0]))
+        df = pd.DataFrame(container,trip.columns).T
+        return df
+
+    @staticmethod
+    def plot_paa(feature, w_size=20):
+        plot_paa(feature, window_size=w_size,output_size=None,overlapping=False,marker='o')
