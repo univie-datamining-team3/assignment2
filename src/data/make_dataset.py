@@ -9,6 +9,7 @@ import logging
 from dotenv import find_dotenv, load_dotenv
 from data.download import DatasetDownloader
 from data.preprocessing import Preprocessor
+import numpy
 
 
 def main():
@@ -30,9 +31,10 @@ def main():
     logger.info('downloading was successfull')
 
     # Not implemented yet
-    Preprocessor.preprocess([os.environ.get("KEY_RAPHAEL"),
-                             os.environ.get("KEY_MORITZ"),
-                             os.environ.get("KEY_LUKAS")])
+    dfs = Preprocessor.preprocess([os.environ.get("KEY_RAPHAEL"),
+                                   os.environ.get("KEY_MORITZ"),
+                                   os.environ.get("KEY_LUKAS")])
+
 
 if __name__ == '__main__':
     log_fmt = '%(asctime)s - %(name)s - %(levelname)s - %(message)s'

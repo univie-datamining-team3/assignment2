@@ -34,19 +34,41 @@ class Preprocessor:
             # 2. Remove trips less than 10 minutes long.
             dfs = Preprocessor._remove_dataframes_by_duration_limit(dfs, 10 * 60)
 
-            # 3. Resample time series.
-            resampled_sensor_values = Preprocessor._resample_trip_time_series(dfs)
-
-            # 4. Cut first and last 30 seconds from scripted trips.
+            # 3. Cut first and last 30 seconds from scripted trips.
             dfs = Preprocessor._cut_off_start_and_end_in_dataframes(
                 dataframes=dfs, list_of_dataframe_names_to_cut=["sensor", "location"], cutoff_in_seconds=30
             )
 
+            # 4. Resample time series.
+            resampled_sensor_values = Preprocessor._resample_trip_time_series(dfs)
+
+            # 5. Recalculate 2-norm for accerelometer data.
+            resampled_sensor_values = Preprocessor._recalculate_accerelometer_2norm(resampled_sensor_values)
+
             preprocessed_data[token] = {}
-            preprocessed_data[token]["dataframes"] = dfs
+            preprocessed_data[token]["trips"] = dfs
             preprocessed_data[token]["resampled_sensor_data"] = resampled_sensor_values
 
         return preprocessed_data
+
+    @staticmethod
+    def _recalculate_accerelometer_2norm(resampled_dataframes):
+        """
+        Recalculates 2-norm for x-/y-/z-values in accerelometer data.
+        Note that the original column 'total' is overwritten with the new value.
+        :param resampled_dataframes:
+        :return: List of dataframes with updated values for column 'total'.
+        """
+
+        for i, df in enumerate(resampled_dataframes):
+            # Chain x-/y-/z-valuees for all entries in current dataframe and apply 2-norm on resulting (2, n)-shaped
+            # vector.
+            resampled_dataframes[i]["total"] = np.linalg.norm(
+                np.array([df["x"], df["y"], df["z"]]),
+                ord=2, axis=0
+            )
+
+        return resampled_dataframes
 
     @staticmethod
     def _cut_off_start_and_end_in_dataframes(dataframes, list_of_dataframe_names_to_cut, cutoff_in_seconds=30):
@@ -59,16 +81,18 @@ class Preprocessor:
         :return: List of cleaned/cut dataframes.
         """
 
+        scripted_trips = {"TRAM": 0, "METRO": 0, "WALK": 0}
         for i, df in enumerate(dataframes):
             # Assuming "notes" only has one entry per trip and scripted trips' notes contain the word "scripted",
             # while ordinary trips' notes don't.
             if "scripted" in str(df["annotation"]["notes"][0]).lower():
+                scripted_trips[df["annotation"]["mode"][0]] += 1
                 for dataframe_name in list_of_dataframe_names_to_cut:
                     # Cut off time series data.
                     dataframes[i][dataframe_name] = Preprocessor._cut_off_start_and_end_in_dataframe(
                         dataframe=df[dataframe_name], cutoff_in_seconds=cutoff_in_seconds
                     )
-
+        print(scripted_trips)
         return dataframes
 
     @staticmethod
@@ -81,21 +105,26 @@ class Preprocessor:
         :return: Cleaned dataframe.
         """
 
-        # Calculate time thresholds.
-        lower_time_threshold = dataframe.head(1)["time"].values[0]
-        upper_time_threshold = dataframe.tail(1)["time"].values[0]
+        # Only cut if enough values exist. If not (e. g. "location" data not available) return None.
+        if not dataframe.empty:
+            # Calculate time thresholds.
+            lower_time_threshold = dataframe.head(1)["time"].values[0]
+            upper_time_threshold = dataframe.tail(1)["time"].values[0]
 
-        # Assuming time is specified as UTC timestamp in milliseconds, so let's convert the cutoff to milliseconds.
-        cutoff_in_seconds *= 1000
+            # Assuming time is specified as UTC timestamp in milliseconds, so let's convert the cutoff to milliseconds.
+            cutoff_in_seconds *= 1000
 
-        # Drop all rows with a time value less than 30 seconds after the initial entry and less than 30 seconds
-        # before the last entry.
-        dataframe = dataframe[
-            (dataframe["time"] >= lower_time_threshold + cutoff_in_seconds) &
-            (dataframe["time"] <= upper_time_threshold + cutoff_in_seconds)
-        ]
+            # Drop all rows with a time value less than 30 seconds after the initial entry and less than 30 seconds
+            # before the last entry.
+            dataframe = dataframe[
+                (dataframe["time"] >= lower_time_threshold + cutoff_in_seconds) &
+                (dataframe["time"] <= upper_time_threshold + cutoff_in_seconds)
+            ]
 
-        return dataframe
+            return dataframe
+
+        else:
+            return None
 
     @staticmethod
     def _resample_trip_time_series(dataframes):
