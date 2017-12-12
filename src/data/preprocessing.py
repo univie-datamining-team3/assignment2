@@ -198,17 +198,18 @@ class Preprocessor:
         -------
         result: returns a deepcopy of the data with transformed time columns.
         """
-
-        df_column_names = list(df.columns.values)
-        if any(name_i in time_col_names for name_i in df_column_names):
-            result = deepcopy(df)
-            for time_column_name in time_col_names:
-                if time_column_name in df_column_names:
-                    index_copy = result.index
-                    result.set_index(time_column_name,inplace=True)
-                    result.index = pd.to_datetime(result.index, unit=unit)
-                    result.reset_index(inplace=True)
-                    result.index = index_copy
+        result = pd.DataFrame()
+        if df is not None:
+            df_column_names = list(df.columns.values)
+            if any(name_i in time_col_names for name_i in df_column_names):
+                result = deepcopy(df)
+                for time_column_name in time_col_names:
+                    if time_column_name in df_column_names:
+                        index_copy = result.index
+                        result.set_index(time_column_name,inplace=True)
+                        result.index = pd.to_datetime(result.index, unit=unit)
+                        result.reset_index(inplace=True)
+                        result.index = index_copy
         return result
 
     @staticmethod
@@ -564,7 +565,7 @@ class Preprocessor:
         w_size... the bin size.
 
         REQUIREMENT: package 'future'
-        
+
         Returns
         -------
         df : a pandas DataFrame containing the interpolated series
