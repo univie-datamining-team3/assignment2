@@ -50,7 +50,7 @@ def plot_gps_heatmap(tracks, file_name):
 
     for trip_i in tracks:
         location_i = trip_i["location"]
-        if location_i is not None:
+        if location_i is not None and not location_i.empty:
 
             latitude_i = location_i['latitude']
             longitude_i = location_i['longitude']
