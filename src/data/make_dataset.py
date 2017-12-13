@@ -26,14 +26,22 @@ def main():
     DatasetDownloader.USERNAME = str(os.environ.get("LOGINNAME"))
     DatasetDownloader.PASSWORD = str(os.environ.get("LOGINPASSWORD"))
 
+    dfs = Preprocessor.preprocess([os.environ.get("KEY_RAPHAEL")])
+
+    cd = dfs[os.environ.get("KEY_RAPHAEL")]["trips"][14]
+    print(cd["sensor"].isnull().sum().sum())
+    all_sensors_resampled = Preprocessor.downsample_time_series_per_category(cd["sensor"],
+                                                                             categorical_colnames=["sensor"])
+    print(all_sensors_resampled.isnull().sum().sum())
+
     # Download data.
     # DatasetDownloader.download_all()
-    logger.info('downloading was successfull')
+    #logger.info('downloading was successfull')
 
     # Not implemented yet
-    dfs = Preprocessor.preprocess([os.environ.get("KEY_RAPHAEL"),
-                                   os.environ.get("KEY_MORITZ"),
-                                   os.environ.get("KEY_LUKAS")])
+    #dfs = Preprocessor.preprocess([os.environ.get("KEY_RAPHAEL"),
+    #                               os.environ.get("KEY_MORITZ"),
+    #                               os.environ.get("KEY_LUKAS")])
 
 
 if __name__ == '__main__':
