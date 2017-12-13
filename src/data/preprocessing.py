@@ -33,32 +33,21 @@ class Preprocessor:
 
             # 2. Remove trips less than 10 minutes long.
             dfs = Preprocessor._remove_dataframes_by_duration_limit(dfs, 10 * 60)
-            #print("pre")
-            #print(dfs[0]['sensor'].head(1))
-            # 3. resample to common hertz rate
-            dfs = Preprocessor.refactor_to_common_hertz_rate(dfs)
-            #print('post')
-            #print(dfs[0]['sensor'][0])
-            #print(dfs[0]['sensor'][10])
-            #print(dfs[0]['sensor'][20])
+
             # 3. Cut first and last 30 seconds from scripted trips.
             dfs = Preprocessor._cut_off_start_and_end_in_dataframes(
                 dataframes=dfs, list_of_dataframe_names_to_cut=["sensor", "location"], cutoff_in_seconds=30
             )
 
             # 4. Resample time series.
-            #resampled_sensor_values = Preprocessor._resample_trip_time_series(dfs)
-
-            test_dict = Preprocessor.convert_timestamps(dfs)
+            resampled_sensor_values = Preprocessor._resample_trip_time_series(dfs)
 
             # 5. Recalculate 2-norm for accerelometer data.
-            #resampled_sensor_values = Preprocessor._recalculate_accerelometer_2norm(test_dict)
+            resampled_sensor_values = Preprocessor._recalculate_accerelometer_2norm(resampled_sensor_values)
 
             preprocessed_data[token] = {}
             preprocessed_data[token]["trips"] = dfs
-            preprocessed_data[token]["resampled_sensor_data"] = test_dict
-
-
+            preprocessed_data[token]["resampled_sensor_data"] = resampled_sensor_values
 
         return preprocessed_data
 
@@ -530,42 +519,6 @@ class Preprocessor:
         return dfs
 
     @staticmethod
-    def refactor_to_common_hertz_rate(dfs):
-        # new dict
-        newDict = deepcopy(dfs)
-
-        for i in range(0, len(newDict)):
-            print('Frame ', i)
-            #get single trip
-            sensor_trip = newDict[i]['sensor']
-
-            #get all sensors
-            sensor_set = set(sensor_trip['sensor'])
-
-            #create new data frame
-            helper = pd.DataFrame()
-
-            for sensor in sensor_set:
-                sensor_data = sensor_trip[sensor_trip['sensor'] == sensor]
-                sensor_data = sensor_data.drop(['sensor', 'total'], axis=1)
-
-                sensor_data.reset_index(drop=True,inplace=True)
-
-                print("checking sensor: ", sensor)
-                sensor_data = Preprocessor.approx_sensor(sensor_data, 100)
-
-                sensor_data = Preprocessor.normalize_trip(sensor_data, 5)
-
-                sensor_data['sensor'] = sensor
-
-                helper = pd.concat([helper,sensor_data])
-
-            newDict[i]['sensor'] = helper
-            print(newDict[i]['sensor'].head(1))
-        return newDict
-
-
-    @staticmethod
     def approx_sensor(acc, hz=None, atd_ms=None):
         """
         This method interpolates the observations at equidistant time stamps.
@@ -589,13 +542,10 @@ class Preprocessor:
 
         new_time = np.arange(acc['time'][0], acc['time'][len(acc['time'])-1], atd_ms)
 
-        print("x inter")
         f_ax = interp1d(acc['time'],acc['x'])
         ax = list(f_ax(new_time))
-        print("y inter")
         f_ay = interp1d(acc['time'],acc['y'])
         ay = list(f_ay(new_time))
-        print("z inter")
         f_az = interp1d(acc['time'],acc['z'])
         az = list(f_az(new_time))
 
@@ -603,11 +553,7 @@ class Preprocessor:
             'time':new_time,
             'x':ax,
             'y':ay,
-            'z':az,
-            'total': np.linalg.norm(
-                np.array([ax, ay, az]),
-                ord=2, axis=0
-            )
+            'z':az
         })
         return df
 
@@ -624,22 +570,13 @@ class Preprocessor:
         -------
         df : a pandas DataFrame containing the interpolated series
         """
-
         paa = PAA(window_size=w_size, output_size=None, overlapping=False)
         container = list()
-        #print("before check")
         for label in trip.columns:
-            #print("label: ", label)
-            arr = np.array([trip[label]], dtype=np.float64)
-            #print("pre_transform")
-            print("length of array before: ", len(arr[0]))
+            arr = np.array([trip[label]])
             transf = paa.transform(arr)
-            print("length of array after: ", len(arr[0]))
-                #print("after transf")
             container.append(list(transf[0]))
-
         df = pd.DataFrame(container,trip.columns).T
-        df['time'] = [int(i) for i in df['time']]
         return df
 
     @staticmethod
