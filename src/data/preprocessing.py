@@ -45,11 +45,44 @@ class Preprocessor:
             # 5. Recalculate 2-norm for accerelometer data.
             resampled_sensor_values = Preprocessor._recalculate_accerelometer_2norm(resampled_sensor_values)
 
+            # Prepare dictionary with results.
             preprocessed_data[token] = {}
             preprocessed_data[token]["trips"] = dfs
             preprocessed_data[token]["resampled_sensor_data"] = resampled_sensor_values
 
         return preprocessed_data
+
+    @staticmethod
+    def _filter_nan_values(dataframes: list, properties_to_check: list, allowed_nan_ratio: float = 0.2):
+        """
+        Filter NAN values from dataframes sensor data. Note that dataframe is dismissed if at least (!) one of the
+        specified columns exceeds the allowed ratio of NANs.
+        :param dataframes:
+        :param properties_to_check: Properties to check for NAN values (e.g.: "sensor", "location").
+        :param allowed_nan_ratio: Dataframe is removed if ratio (0 to 1) of NAN values relative to total count
+        exceeds defined threshold.
+        :return:
+        """
+
+        filtered_dataframes = []
+        for i, df in enumerate(dataframes):
+            # Check if threshold was reached for one of the specified columns.
+            threshold_reached = True if np.count_nonzero(
+                [
+                    df[prop].isnull().sum().sum() / float(len(df[prop])) > allowed_nan_ratio
+                    for prop in properties_to_check
+                ]
+            ) > 0 else False
+
+            # Dismiss dataframe if share of NAN values is above defined_threshold.
+            if not threshold_reached:
+                # Drop rows with NANs.
+                for key in properties_to_check:
+                    df[key].dropna(axis=0, how='any', inplace=True)
+                # Append to list.
+                filtered_dataframes.append(df)
+
+        return filtered_dataframes
 
     @staticmethod
     def _recalculate_accerelometer_2norm(resampled_dataframes):
