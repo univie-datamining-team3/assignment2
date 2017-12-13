@@ -5,12 +5,17 @@ Script for applying the data processing tasks
 
 # -*- coding: utf-8 -*-
 import os
+import sys
+import argparse
 import logging
 from dotenv import find_dotenv, load_dotenv
+sys.path.append(os.path.join(os.getcwd(), os.pardir, 'src'))
 from data.download import DatasetDownloader
 from data.preprocessing import Preprocessor
+from utils.utilities import str2bool
 import numpy
 
+FLAGS = None
 
 def main():
     """ Runs data processing scripts to turn raw data from (../raw) into
@@ -18,7 +23,7 @@ def main():
     """
 
     logger = logging.getLogger(__name__)
-    logger.info('start downloading data into raw:')
+
 
     # Set environment variables.
     load_dotenv(find_dotenv())
@@ -26,16 +31,31 @@ def main():
     DatasetDownloader.USERNAME = str(os.environ.get("LOGINNAME"))
     DatasetDownloader.PASSWORD = str(os.environ.get("LOGINPASSWORD"))
 
-    # Download data.
-    DatasetDownloader.download_all()
-    logger.info('downloading was successfull')
+    if FLAGS.download:
+        # Download data.
+        logger.info('start downloading data into raw:')
+        DatasetDownloader.download_all()
+        logger.info('downloading was successfull')
 
-    # Not implemented yet
-    dfs = Preprocessor.preprocess([os.environ.get("KEY_RAPHAEL"),
-                                   os.environ.get("KEY_MORITZ"),
-                                   os.environ.get("KEY_LUKAS")])
+    if FLAGS.preprocess:
+        logger.info('start preprocessing data:')
+        # Not implemented yet
+        dfs = Preprocessor.preprocess([os.environ.get("KEY_RAPHAEL"),
+                                       os.environ.get("KEY_MORITZ"),
+                                       os.environ.get("KEY_LUKAS")])
+        logger.info('preprocessing was successfull')
 
 if __name__ == '__main__':
     log_fmt = '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
     logging.basicConfig(level=logging.INFO, format=log_fmt)
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--download',
+                        type=str2bool,
+                        default="True",
+                        help='Set true, if you want to download all data')
+    parser.add_argument('--preprocess',
+                        type=str2bool,
+                        default="True",
+                        help='Set true, if you want to apply the preprocessing')
+    FLAGS, unparsed = parser.parse_known_args()
     main()
