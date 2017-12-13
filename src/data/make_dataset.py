@@ -27,14 +27,8 @@ def main():
     DatasetDownloader.PASSWORD = str(os.environ.get("LOGINPASSWORD"))
 
     # Download data.
-    # DatasetDownloader.download_all()
+    #DatasetDownloader.download_all()
     logger.info('downloading was successfull')
-
-    # Not implemented yet
-    dfs = Preprocessor.preprocess([os.environ.get("KEY_RAPHAEL"),
-                                   os.environ.get("KEY_MORITZ"),
-                                   os.environ.get("KEY_LUKAS")])
-
 
 if __name__ == '__main__':
     log_fmt = '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
