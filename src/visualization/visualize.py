@@ -40,3 +40,28 @@ def plot_track(track, file_name):
     map_dir = os.path.join(get_vis_dir(),"maps")
     setup_directory(map_dir)
     gmas.draw(os.path.join(map_dir, file_name))
+
+def plot_gps_heatmap(tracks, file_name):
+    """
+    Plots all tracks onto google map and visualizes them as heatmap
+    """
+    latitudes = pd.DataFrame()
+    longitudes = pd.DataFrame()
+
+    for trip_i in tracks:
+        location_i = trip_i["location"]
+        if location_i is not None and not location_i.empty:
+
+            latitude_i = location_i['latitude']
+            longitude_i = location_i['longitude']
+            latitudes = pd.concat([latitudes, latitude_i])
+            longitudes = pd.concat([longitudes, longitude_i])
+
+    gmap = gmplot.GoogleMapPlotter.from_geocode("Vienna")
+    gmap.heatmap(list(latitudes[0]), list(longitudes[0]))
+
+    map_dir = os.path.join(get_vis_dir(),"maps")
+    setup_directory(map_dir)
+    if not file_name.endswith(".html"):
+        file_name = file_name + '.html'
+    gmap.draw(os.path.join(map_dir, file_name))
