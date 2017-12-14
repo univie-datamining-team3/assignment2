@@ -27,13 +27,17 @@ def main():
     DatasetDownloader.PASSWORD = str(os.environ.get("LOGINPASSWORD"))
 
     # Download data.
-    DatasetDownloader.download_all()
-    logger.info('downloading was successfull')
+    # DatasetDownloader.download_all()
+    logger.info('downloading was successful')
 
-    # Not implemented yet
+    # Preprocess data.
     dfs = Preprocessor.preprocess([os.environ.get("KEY_RAPHAEL"),
                                    os.environ.get("KEY_MORITZ"),
-                                   os.environ.get("KEY_LUKAS")])
+                                   os.environ.get("KEY_LUKAS")],
+                                  filename="test.dat")
+
+    # Load dataframes from disk.
+    # dfs = Preprocessor.restore_preprocessed_data_from_disk(filename="test.dat")
 
 if __name__ == '__main__':
     log_fmt = '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
