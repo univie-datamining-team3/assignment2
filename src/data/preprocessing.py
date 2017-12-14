@@ -42,11 +42,20 @@ class Preprocessor:
                 dataframes=dfs, list_of_dataframe_names_to_cut=["sensor", "location"], cutoff_in_seconds=30
             )
 
-            # 4. Resample time series.
+            # 4.Convert timestamps to human readable format
+            dfs = Preprocessor.convert_timestamps(dfs, unit="ms")
+
+            # 5. Resample time series.
             resampled_sensor_values = Preprocessor._resample_trip_time_series(dfs)
 
-            # 5. Recalculate 2-norm for accerelometer data.
+            # 6. Drop nan values:
+            drop_almost_all_nans_ratio = 0.001
+            resampled_sensor_values = Preprocessor._filter_nan_values(resampled_sensor_values,  properties_to_check=["total"],
+                                                                      allowed_nan_ratio=drop_almost_all_nans_ratio)
+
+            # 7. Recalculate 2-norm for accerelometer data.
             resampled_sensor_values = Preprocessor._recalculate_accerelometer_2norm(resampled_sensor_values)
+
 
             # Prepare dictionary with results.
             preprocessed_data[token] = {}
@@ -206,7 +215,7 @@ class Preprocessor:
 
         filtered_dataframes = []
         for df in dataframes:
-            if not df["annotation"].empty:
+            if ("annotation" in df.keys()) and (not df["annotation"].empty):
                 filtered_dataframes.append(df)
 
         return filtered_dataframes
@@ -411,24 +420,24 @@ class Preprocessor:
         data: returns the data with downsampled time columns, where each new bin
               is aggregated via the mean and keeps the categorical values.
         """
-        series_column_names = list(series.columns.values)
+        copied_series = deepcopy(series)
+        series_column_names = list(copied_series.columns.values)
         result = pd.DataFrame(columns = series_column_names)
         # In case the column or index has not been converted to Datetime object
         # it will be converted here.
-        if (time_col_name=="index") and (series.index.dtype in [np.dtype("Int64")]):
-            series = deepcopy(series)
-            series.index = pd.to_datetime(series.index, unit="ms")
+        if (time_col_name=="index") and (copied_series.index.dtype in [np.dtype("Int64")]):
+
+            copied_series.index = pd.to_datetime(copied_series.index, unit="ms")
         if time_col_name in series_column_names:
-            if series[time_col_name].dtype in [np.dtype("Int64")]:
-                series = deepcopy(series)
-                series = Preprocessor._convert_timestamps_from_dataframe(series, time_col_names=[time_col_name])
+            if copied_series[time_col_name].dtype in [np.dtype("Int64")]:
+                copied_series = Preprocessor._convert_timestamps_from_dataframe(copied_series, time_col_names=[time_col_name])
 
         # Start actual downsampling
-        if isinstance(series.index, pd.DatetimeIndex) or (time_col_name in series_column_names):
+        if isinstance(copied_series.index, pd.DatetimeIndex) or (time_col_name in series_column_names):
             for categorical_colname_i in categorical_colnames:
-                categories = list(series[categorical_colname_i].unique())
+                categories = list(copied_series[categorical_colname_i].unique())
                 for category_i in categories:
-                    series_for_category = series[series[categorical_colname_i]==category_i]
+                    series_for_category = copied_series[copied_series[categorical_colname_i]==category_i]
                     resampled = Preprocessor.downsample_time_series(series_for_category, time_interval, time_col_name)
                     resampled[categorical_colname_i] = category_i
                     result = pd.concat([result, resampled])
@@ -440,7 +449,7 @@ class Preprocessor:
             # need to reset index otherwise indices could be not unique anymore
             result = result.reset_index()
         else:
-            result = series
+            result = copied_series
         return result
 
     @staticmethod
@@ -469,10 +478,12 @@ class Preprocessor:
             all_trips_copy = all_trips
         start_times = []
         end_times = []
-        for trip_i in range(0, nr_of_recorded_trips_token):
-            result = pd.concat([result, all_trips_copy[trip_i]["annotation"]])
-            start_times.append(all_trips_copy[trip_i]["marker"].iloc[0,0])
-            end_times.append(all_trips_copy[trip_i]["marker"].iloc[-1,0])
+        for index in range(0, nr_of_recorded_trips_token):
+            trip_i = all_trips_copy[index]
+            if ("annotation" in trip_i.keys()) and (not trip_i["annotation"].empty):
+                result = pd.concat([result, trip_i["annotation"]])
+                start_times.append(trip_i["marker"].iloc[0,0])
+                end_times.append(trip_i["marker"].iloc[-1,0])
 
         result["Start"] = start_times
         result["Stop"] = end_times
