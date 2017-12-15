@@ -42,7 +42,6 @@ class Preprocessor:
                 dataframes=dfs, list_of_dataframe_names_to_cut=["sensor", "location"], cutoff_in_seconds=30
             )
 
-
             # 4. Perform paa
             resampled_sensor_values = Preprocessor.calculate_paa(dfs)
 
@@ -60,11 +59,8 @@ class Preprocessor:
             # 7. Recalculate 2-norm for accerelometer data.
             #resampled_sensor_values = Preprocessor._recalculate_accerelometer_2norm(resampled_sensor_values)
 
-
             # Prepare dictionary with results.
-            preprocessed_data[token] = {}
-            preprocessed_data[token]["trips"] = dfs
-            preprocessed_data[token]["resampled_sensor_data"] = resampled_sensor_values
+            preprocessed_data[token] = resampled_sensor_values
 
         # Dump data to file, if requested.
         if filename is not None:
