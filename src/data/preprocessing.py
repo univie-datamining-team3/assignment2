@@ -8,6 +8,7 @@ import sys
 from scipy.interpolate import interp1d
 from pyts.visualization import plot_paa
 from pyts.transformation import PAA
+import pickle
 
 
 class Preprocessor:
@@ -16,10 +17,12 @@ class Preprocessor:
     """
 
     @staticmethod
-    def preprocess(tokens):
+    def preprocess(tokens, filename: str = None):
         """
         Executes all preprocessing steps.
         :param tokens: List with keys of tokens to preprocess.
+        :param filename: Specifies name of file data should be dumped to. Not persisted to disk if specified value is
+        None. Note that filename is relative; all files are stored in /data/preprocessed.
         :return: Dictionary with preprocessed data. Specified tokens are used as keys.
         """
 
@@ -59,7 +62,26 @@ class Preprocessor:
             preprocessed_data[token]["trips"] = dfs
             preprocessed_data[token]["resampled_sensor_data"] = resampled_sensor_values
 
+            # Dump data to file, if requested.
+            if filename is not None:
+                with open("../../data/" + filename, "wb") as file:
+                    file.write(pickle.dumps(preprocessed_data))
+
         return preprocessed_data
+
+    @staticmethod
+    def restore_preprocessed_data_from_disk(filename: str):
+        """
+        Loads pickled object from disk.
+        :param filename: File name/relative path in /data/preprocessed.
+        :return: Dictionary holding data for tokens (same format as returned by Preprocessor.preprocess().
+        """
+
+        with open("../../data/" + filename, "rb") as file:
+            preprocessed_data = file.read()
+
+        # https://media.giphy.com/media/9zXWAIcr6jycE/giphy.gif
+        return pickle.loads(preprocessed_data)
 
     @staticmethod
     def _filter_nan_values(dataframes: list, properties_to_check: list, allowed_nan_ratio: float = 0.2):

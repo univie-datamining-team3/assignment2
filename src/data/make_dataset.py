@@ -31,6 +31,7 @@ def main():
     DatasetDownloader.USERNAME = str(os.environ.get("LOGINNAME"))
     DatasetDownloader.PASSWORD = str(os.environ.get("LOGINPASSWORD"))
 
+
     if FLAGS.download:
         # Download data.
         logger.info('start downloading data into raw:')
@@ -39,11 +40,15 @@ def main():
 
     if FLAGS.preprocess:
         logger.info('start preprocessing data:')
-        # Not implemented yet
+        # Preprocess data. Store it in /data/preprocessed/preprocessed_data.dat.
         dfs = Preprocessor.preprocess([os.environ.get("KEY_RAPHAEL"),
                                        os.environ.get("KEY_MORITZ"),
-                                       os.environ.get("KEY_LUKAS")])
-        logger.info('preprocessing was successfull')
+                                       os.environ.get("KEY_LUKAS")],
+                                      filename="preprocessed_data.dat")
+        # Load dataframes from disk.
+        # dfs = Preprocessor.restore_preprocessed_data_from_disk(filename="preprocessed_data.dat")
+
+        logger.info('preprocessing was successful')
 
 if __name__ == '__main__':
     log_fmt = '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
