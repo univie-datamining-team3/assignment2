@@ -62,12 +62,18 @@ class Preprocessor:
             preprocessed_data[token]["trips"] = dfs
             preprocessed_data[token]["resampled_sensor_data"] = resampled_sensor_values
 
-            # Dump data to file, if requested.
-            if filename is not None:
-                with open("../../data/" + filename, "wb") as file:
-                    file.write(pickle.dumps(preprocessed_data))
+        # Dump data to file, if requested.
+        if filename is not None:
+            data_dir = DatasetDownloader.get_data_dir()
+            preprocessed_path = os.path.join(data_dir, "preprocessed")
+            # make sure the directory exists
+            DatasetDownloader.setup_directory(preprocessed_path)
+            full_path = os.path.join(preprocessed_path, filename)
+            with open(full_path, "wb") as file:
+                file.write(pickle.dumps(preprocessed_data))
 
         return preprocessed_data
+
 
     @staticmethod
     def restore_preprocessed_data_from_disk(filename: str):
