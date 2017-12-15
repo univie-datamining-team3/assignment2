@@ -65,3 +65,23 @@ def plot_gps_heatmap(tracks, file_name):
     if not file_name.endswith(".html"):
         file_name = file_name + '.html'
     gmap.draw(os.path.join(map_dir, file_name))
+
+
+
+def plot_acceleration_sensor(acceleration_for_one_trip: pd.DataFrame):
+    figsize=(12, 4)
+    acceleration_for_one_trip["x"].plot(figsize=figsize);
+    plt.ylabel("x")
+    plt.show();
+
+    acceleration_for_one_trip["y"].plot(figsize=figsize);
+    plt.ylabel("y")
+    plt.show();
+
+    acceleration_for_one_trip["z"].plot(figsize=figsize);
+    plt.ylabel("z")
+    plt.show();
+
+    acceleration_for_one_trip["total"].plot(figsize=figsize);
+    plt.ylabel("total")
+    plt.show();
