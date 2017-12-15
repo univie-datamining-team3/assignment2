@@ -45,16 +45,19 @@ class Preprocessor:
             # 4.Convert timestamps to human readable format
             dfs = Preprocessor.convert_timestamps(dfs, unit="ms")
 
+            # 5. Perform paa
+            resampled_sensor_values = Preprocessor.calculate_paa(dfs)
+
             # 5. Resample time series.
-            resampled_sensor_values = Preprocessor._resample_trip_time_series(dfs)
+            #resampled_sensor_values = Preprocessor._resample_trip_time_series(dfs)
 
             # 6. Drop nan values:
-            drop_almost_all_nans_ratio = 0.001
-            resampled_sensor_values = Preprocessor._filter_nan_values(resampled_sensor_values,  properties_to_check=["total"],
-                                                                      allowed_nan_ratio=drop_almost_all_nans_ratio)
+            #drop_almost_all_nans_ratio = 0.001
+            #resampled_sensor_values = Preprocessor._filter_nan_values(resampled_sensor_values,  properties_to_check=["total"],
+            #                                                          allowed_nan_ratio=drop_almost_all_nans_ratio)
 
             # 7. Recalculate 2-norm for accerelometer data.
-            resampled_sensor_values = Preprocessor._recalculate_accerelometer_2norm(resampled_sensor_values)
+            #resampled_sensor_values = Preprocessor._recalculate_accerelometer_2norm(resampled_sensor_values)
 
 
             # Prepare dictionary with results.
@@ -585,6 +588,71 @@ class Preprocessor:
         return dfs
 
     @staticmethod
+    def calculate_paa(dfs):
+        # new dict
+        newDict = deepcopy(dfs)
+        for i in range(0, len(newDict)):
+            print('Frame ', i)
+            #get single trip
+            sensor_trip = newDict[i]['sensor']
+            #get all sensors
+            sensor_set = set(sensor_trip['sensor'])
+            #create new data frame
+            helper = pd.DataFrame()
+
+            for sensor in sensor_set:
+                print("sensor: ", sensor)
+                # make deep copy of data frame
+                sensor_data = deepcopy(sensor_trip[sensor_trip['sensor'] == sensor])
+
+                #print('init time frame')
+                #print(Preprocessor.convert_timestamps(sensor_data.head(1)))
+                #print(Preprocessor.convert_timestamps(sensor_data.tail(1)))
+
+                sensor_data = sensor_data.drop(['sensor', 'total'], axis=1)
+                sensor_data.reset_index(drop=True,inplace=True)
+                sensor_data = Preprocessor.approx_sensor(sensor_data, 100)
+
+                start_index = 0
+                stop_index = 1
+                end_of_df = len(sensor_data)
+
+                buffer_helper = pd.DataFrame()
+                filler = pd.DataFrame()
+
+                #print("end_of_df:", end_of_df)
+
+                while stop_index <= end_of_df:
+                    if start_index + 30000 <= end_of_df:
+                        stop_index = stop_index + 30000
+                    else:
+                        stop_index = end_of_df+1
+
+                    buffer_helper = deepcopy(sensor_data.iloc[start_index:stop_index,:])
+                    buffer_helper = Preprocessor.normalize_trip(buffer_helper)
+
+                    #print('normalization start:', start_index)
+                    #print('normalization stop:', stop_index)
+                    #print(Preprocessor.convert_timestamps(buffer_helper.head(1))['time'])
+                    #print(Preprocessor.convert_timestamps(buffer_helper.tail(1))['time'])
+                    #print('************************')
+
+                    filler = filler.append(buffer_helper)
+                    start_index = stop_index
+
+                filler['sensor'] = sensor
+                filler['total'] = np.linalg.norm(np.array([filler['x'], filler['y'], filler['z']]),ord=2, axis=0)
+                helper = pd.concat([helper,filler])
+
+                #print("complete frame")
+                #print(Preprocessor.convert_timestamps(helper.head(1))['time'])
+                #print(Preprocessor.convert_timestamps(helper.tail(1))['time'])
+                #print('----------------------------')
+            #print(helper.head(1))
+            newDict[i]['sensor'] = helper
+        return Preprocessor.convert_timestamps(newDict)
+
+    @staticmethod
     def approx_sensor(acc, hz=None, atd_ms=None):
         """
         This method interpolates the observations at equidistant time stamps.
@@ -607,7 +675,6 @@ class Preprocessor:
             print("hz is overruled with atd_ms")
 
         new_time = np.arange(acc['time'][0], acc['time'][len(acc['time'])-1], atd_ms)
-
         f_ax = interp1d(acc['time'],acc['x'])
         ax = list(f_ax(new_time))
         f_ay = interp1d(acc['time'],acc['y'])
@@ -619,12 +686,17 @@ class Preprocessor:
             'time':new_time,
             'x':ax,
             'y':ay,
-            'z':az
+            'z':az,
+            'total': np.linalg.norm(
+                np.array([ax, ay, az]),
+                ord=2, axis=0
+            )
         })
+
         return df
 
     @staticmethod
-    def normalize_trip(trip, w_size=20):
+    def normalize_trip(trip):
         """
         This method performs a Piecewise Aggregate Approximation of a trip.
         trip... a dataframe which should be used
@@ -636,15 +708,64 @@ class Preprocessor:
         -------
         df : a pandas DataFrame containing the interpolated series
         """
-        paa = PAA(window_size=w_size, output_size=None, overlapping=False)
+        copy_dummy = deepcopy(trip)
+
+        paa = PAA(window_size=5, output_size=None, overlapping=False)
         container = list()
-        for label in trip.columns:
-            arr = np.array([trip[label]])
+
+        for label in copy_dummy.columns:
+            arr = np.array([copy_dummy[label]], dtype=np.float64)
             transf = paa.transform(arr)
             container.append(list(transf[0]))
+
         df = pd.DataFrame(container,trip.columns).T
+        df['time'] = [int(i) for i in df['time']]
         return df
 
     @staticmethod
-    def plot_paa(feature, w_size=20):
+    def plot_paa(sensor_data, w_size=5, seconds=2):
+
+
         plot_paa(feature, window_size=w_size,output_size=None,overlapping=False,marker='o')
+
+    @staticmethod
+    def print_start_and_end_of_recording_per_sensor(df):
+        set_of_sensors = set(df['sensor'])
+        for sensor in set_of_sensors:
+            print("sensor: ", sensor)
+            # get all sensor data for specific sensor
+            sensor_data = deepcopy(df[df["sensor"] == sensor])
+            #reset indices
+            sensor_data.reset_index(drop=True,inplace=True)
+
+            start = min(sensor_data['time'])
+            start = pd.to_datetime(start, unit="ms")
+            end = max(sensor_data['time'])
+            end =  pd.to_datetime(end, unit="ms")
+            print("start of recodring: " , start)
+            print("end of recodring: " , end)
+
+    @staticmethod
+    def check_second_intervals(sensor_data, seconds=5):
+        start = True
+        count = 0
+
+        time_series = deepcopy(sensor_data[sensor_data['sensor'] == 'acceleration'])
+        time_series.reset_index(drop=True,inplace=True)
+        time_series = time_series['time']
+
+        for timestamp in time_series:
+            if start:
+                print("beginning at:", timestamp.minute,":",timestamp.second)
+                prev = timestamp.second
+                start=False
+            next_time = prev + 1 if prev < 59 else 1
+
+            if timestamp.second == next_time:
+                index_pos = time_series[time_series == timestamp].index.tolist()
+                print("next second at index: ",index_pos[0], " at time ",timestamp.minute,":",timestamp.second)
+                prev = timestamp.second
+                count = count + 1
+
+            if count > seconds:
+                break
