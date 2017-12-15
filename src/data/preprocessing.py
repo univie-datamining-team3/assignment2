@@ -30,23 +30,30 @@ class Preprocessor:
 
         for token in tokens:
             # 1. Get travel data per token, remove dataframes without annotations.
-            dfs = Preprocessor._remove_dataframes_without_annotation(
-                Preprocessor.get_data_per_token(token)
+            dfs = Preprocessor.replace_none_values_with_empty_dataframes(
+                # Drop dataframes w/o annotations.
+                Preprocessor._remove_dataframes_without_annotation(
+                    # Get travel data per token.
+                    Preprocessor.get_data_per_token(token)
+                )
             )
 
             # 2. Remove trips less than 10 minutes long.
-            dfs = Preprocessor._remove_dataframes_by_duration_limit(dfs, 10 * 60)
-
-            # 3. Cut first and last 30 seconds from scripted trips.
-            dfs = Preprocessor._cut_off_start_and_end_in_dataframes(
-                dataframes=dfs, list_of_dataframe_names_to_cut=["sensor", "location"], cutoff_in_seconds=30
+            dfs = Preprocessor.replace_none_values_with_empty_dataframes(
+                Preprocessor._remove_dataframes_by_duration_limit(dfs, 10 * 60)
             )
 
-            # 4. Perform paa
-            resampled_sensor_values = Preprocessor.calculate_paa(dfs)
+            # 3. Cut first and last 30 seconds from scripted trips.
+            dfs = Preprocessor.replace_none_values_with_empty_dataframes(
+                Preprocessor._cut_off_start_and_end_in_dataframes(
+                    dataframes=dfs, list_of_dataframe_names_to_cut=["sensor", "location"], cutoff_in_seconds=30
+                )
+            )
 
-            # 5.Convert timestamps to human readable format
-            dfs = Preprocessor.convert_timestamps(dfs, unit="ms")
+            # 4. Perform PAA.
+            resampled_sensor_values = Preprocessor.replace_none_values_with_empty_dataframes(
+                Preprocessor.calculate_paa(dfs)
+            )
 
             # 5. Resample time series.
             #resampled_sensor_values = Preprocessor._resample_trip_time_series(dfs)
@@ -74,6 +81,23 @@ class Preprocessor:
 
         return preprocessed_data
 
+    @staticmethod
+    def replace_none_values_with_empty_dataframes(dataframe_dicts: list):
+        """
+        Checks every dictionary in every dictionary in specified list for None values, replaces them with empty data-
+        frames.
+        :param dataframe_dicts: List of dictionaries containing one dataframe for each key.
+        :return: List in same format with Nones replaced by empty dataframes.
+        """
+
+        # For every key in every dictionary in list: Create new dictionary with Nones replaced by empty dataframes;
+        # concatenate new dictionaries to list.
+        return [
+            {
+                key: pd.DataFrame() if df_dict[key] is None else df_dict[key]
+                for key in df_dict
+            } for df_dict in dataframe_dicts
+        ]
 
     @staticmethod
     def restore_preprocessed_data_from_disk(filename: str):
