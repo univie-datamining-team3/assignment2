@@ -596,7 +596,7 @@ class Preprocessor:
         return dfs
 
     @staticmethod
-    def get_shallow_copy(dfs: list):
+    def _get_shallow_copy(dfs: list):
         """ Helper function to get a shallow copy of the list of dictionaries
             as only sensor data is modified and the rest can be references.
         """
@@ -615,7 +615,7 @@ class Preprocessor:
     def calculate_paa(dfs, verbose=False):
         # new dict
         # newDict = deepcopy(dfs)
-        newDict = Preprocessor.get_shallow_copy(dfs)
+        newDict = Preprocessor._get_shallow_copy(dfs)
         nr_of_trips = len(dfs)
         for i in range(0, nr_of_trips):
             if verbose:
