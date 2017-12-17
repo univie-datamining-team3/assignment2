@@ -19,7 +19,7 @@ FLAGS = None
 
 def main():
     """ Runs data processing scripts to turn raw data from (../raw) into
-        cleaned data ready to be analyzed (saved in ../processed).
+        cleaned data ready to be analyzed (saved in ../preprocessed).
     """
 
     logger = logging.getLogger(__name__)

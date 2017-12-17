@@ -42,11 +42,11 @@ class Preprocessor:
                 dataframes=dfs, list_of_dataframe_names_to_cut=["sensor", "location"], cutoff_in_seconds=30
             )
 
-            # 4.Convert timestamps to human readable format
-            dfs = Preprocessor.convert_timestamps(dfs, unit="ms")
-
-            # 5. Perform paa
+            # 4. Perform paa
             resampled_sensor_values = Preprocessor.calculate_paa(dfs)
+
+            # 5.Convert timestamps to human readable format
+            dfs = Preprocessor.convert_timestamps(dfs, unit="ms")
 
             # 5. Resample time series.
             #resampled_sensor_values = Preprocessor._resample_trip_time_series(dfs)
@@ -59,11 +59,8 @@ class Preprocessor:
             # 7. Recalculate 2-norm for accerelometer data.
             #resampled_sensor_values = Preprocessor._recalculate_accerelometer_2norm(resampled_sensor_values)
 
-
             # Prepare dictionary with results.
-            preprocessed_data[token] = {}
-            preprocessed_data[token]["trips"] = dfs
-            preprocessed_data[token]["resampled_sensor_data"] = resampled_sensor_values
+            preprocessed_data[token] = resampled_sensor_values
 
         # Dump data to file, if requested.
         if filename is not None:
@@ -85,8 +82,9 @@ class Preprocessor:
         :param filename: File name/relative path in /data/preprocessed.
         :return: Dictionary holding data for tokens (same format as returned by Preprocessor.preprocess().
         """
-
-        with open("../../data/" + filename, "rb") as file:
+        data_dir = DatasetDownloader.get_data_dir()
+        full_path = os.path.join(data_dir, "preprocessed", filename)
+        with open(full_path, "rb") as file:
             preprocessed_data = file.read()
 
         # https://media.giphy.com/media/9zXWAIcr6jycE/giphy.gif
@@ -594,11 +592,12 @@ class Preprocessor:
         return dfs
 
     @staticmethod
-    def calculate_paa(dfs):
+    def calculate_paa(dfs, verbose=False):
         # new dict
         newDict = deepcopy(dfs)
         for i in range(0, len(newDict)):
-            print('Frame ', i)
+            if verbose:
+                print('Frame ', i)
             #get single trip
             sensor_trip = newDict[i]['sensor']
             #get all sensors
@@ -607,13 +606,15 @@ class Preprocessor:
             helper = pd.DataFrame()
 
             for sensor in sensor_set:
-                print("sensor: ", sensor)
+                if verbose:
+                    print("sensor: ", sensor)
                 # make deep copy of data frame
                 sensor_data = deepcopy(sensor_trip[sensor_trip['sensor'] == sensor])
 
-                #print('init time frame')
-                #print(Preprocessor.convert_timestamps(sensor_data.head(1)))
-                #print(Preprocessor.convert_timestamps(sensor_data.tail(1)))
+                if verbose:
+                    print('init time frame')
+                    print(Preprocessor.convert_timestamps(sensor_data.head(1)))
+                    print(Preprocessor.convert_timestamps(sensor_data.tail(1)))
 
                 sensor_data = sensor_data.drop(['sensor', 'total'], axis=1)
                 sensor_data.reset_index(drop=True,inplace=True)
@@ -626,7 +627,9 @@ class Preprocessor:
                 buffer_helper = pd.DataFrame()
                 filler = pd.DataFrame()
 
-                #print("end_of_df:", end_of_df)
+
+                if verbose:
+                    print("end_of_df:", end_of_df)
 
                 while stop_index <= end_of_df:
                     if start_index + 30000 <= end_of_df:
@@ -637,11 +640,12 @@ class Preprocessor:
                     buffer_helper = deepcopy(sensor_data.iloc[start_index:stop_index,:])
                     buffer_helper = Preprocessor.normalize_trip(buffer_helper)
 
-                    #print('normalization start:', start_index)
-                    #print('normalization stop:', stop_index)
-                    #print(Preprocessor.convert_timestamps(buffer_helper.head(1))['time'])
-                    #print(Preprocessor.convert_timestamps(buffer_helper.tail(1))['time'])
-                    #print('************************')
+                    if verbose:
+                        print('normalization start:', start_index)
+                        print('normalization stop:', stop_index)
+                        print(Preprocessor.convert_timestamps(buffer_helper.head(1))['time'])
+                        print(Preprocessor.convert_timestamps(buffer_helper.tail(1))['time'])
+                        print('************************')
 
                     filler = filler.append(buffer_helper)
                     start_index = stop_index
@@ -650,11 +654,12 @@ class Preprocessor:
                 filler['total'] = np.linalg.norm(np.array([filler['x'], filler['y'], filler['z']]),ord=2, axis=0)
                 helper = pd.concat([helper,filler])
 
-                #print("complete frame")
-                #print(Preprocessor.convert_timestamps(helper.head(1))['time'])
-                #print(Preprocessor.convert_timestamps(helper.tail(1))['time'])
-                #print('----------------------------')
-            #print(helper.head(1))
+                if verbose:
+                    print("complete frame")
+                    print(Preprocessor.convert_timestamps(helper.head(1))['time'])
+                    print(Preprocessor.convert_timestamps(helper.tail(1))['time'])
+                    print('----------------------------')
+
             newDict[i]['sensor'] = helper
         return Preprocessor.convert_timestamps(newDict)
 
