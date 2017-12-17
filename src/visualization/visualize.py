@@ -85,3 +85,26 @@ def plot_acceleration_sensor(acceleration_for_one_trip: pd.DataFrame):
     acceleration_for_one_trip["total"].plot(figsize=figsize);
     plt.ylabel("total")
     plt.show();
+
+
+def get_color_encoding(color_coding):
+    """
+    Helper function to generate color map and color patches.
+    :return colors: mapping of seaborn rgb colors to each points
+    :return color_patches: color patches for each rgb color, will be displayed
+                           in the legend of the plot.
+    """
+    unique_labels = list(set(list(color_coding)))
+    nr_of_labels = len(unique_labels)
+    color_palette = sns.color_palette("hls", nr_of_labels)
+    color_mapping = dict()
+    for label_i, color in zip(unique_labels, color_palette):
+        color_mapping[label_i] = color
+
+    color_coding_copy = list(color_coding)
+    colors = list(map(lambda x: color_mapping[x], color_coding_copy))
+    color_patches = []
+    for label, label_color in color_mapping.items():
+        color_patches.append(mpl.patches.Patch(color=label_color, label=str(label)))
+
+    return colors, color_patches

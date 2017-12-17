@@ -53,7 +53,7 @@ class Preprocessor:
             preprocessed_data[token] = resampled_sensor_values
 
         # 6. Cut all trips in 30 second snippets
-        trips_cut_per_30_sec = Preprocessor.get_cut_trip_snippets(preprocessed_data, snippet_length=30)
+        trips_cut_per_30_sec = Preprocessor.get_cut_trip_snippets_for_total(preprocessed_data, snippet_length=30, sensor_type="acceleration", distance_calculation=None)
 
         # Dump data to file, if requested.
         if filename is not None:
@@ -71,10 +71,12 @@ class Preprocessor:
 
 
     @staticmethod
-    def get_cut_trip_snippets(dfs, snippet_length=30, sensor_type="acceleration"):
+    def get_cut_trip_snippets_for_total(dfs, snippet_length=30, sensor_type="acceleration", distance_calculation=None):
         """
         This method gets a dictionary of trips per token and cuts them in the
-        specified snippet_length.
+        specified snippet_length. It only uses the one dimensional "total" column
+        of the sensor table, this is in opposition to the calculation of the values
+        from the x,y,z parameters.
 
         Parameters
         ----------
@@ -85,6 +87,12 @@ class Preprocessor:
             specifies the length of the time snippets in seconds
         sensor_type: string, default="acceleration"
             specifies which sensor type should be used for each entry
+        distance_calculation: string, default=None,
+            specifies which distance_calculation method should be used. If None
+            then no distance calculation is executed.
+            Mandatory Distance Calculations:
+                "euclidean" : calculates the euclidean distance
+                              not implemented yet!
 
         Returns
         -------
@@ -93,12 +101,10 @@ class Preprocessor:
                 "mode","notes","scripted","token", where scripted is a binary variable
                 where scripted=1 and ordinary=0
         """
-        #all_trips = Preprocessor.unpack_all_trips(dfs)
         HERTZ_RATE = 20
         column_names = ["snippet_"+str(i) for i in range(snippet_length * HERTZ_RATE)]
         column_names = column_names + ["mode","notes","scripted","token"]
 
-        #records = [(sensor, ) for trip in all_trips]
         result = pd.DataFrame(columns=column_names)
         for token_i, trips in dfs.items():
             for trip_i in trips:
@@ -114,12 +120,15 @@ class Preprocessor:
                 result = pd.concat([result, splitted_trip])
 
         result.reset_index(drop=True, inplace=True)
+        if distance_calculation is None:
+            result = result
         return result
 
     def _cut_trip(sensor_data, snippet_length=30, column_names=None):
         """
         Helper function to cut one trip into segments of snippet_length
-        and return the new pandas.DataFrame
+        and return the new pandas.DataFrame that includes the "total"
+        of each value.
         """
         HERTZ_RATE = 20
         nr_of_trip_columns = HERTZ_RATE * snippet_length
@@ -158,13 +167,6 @@ class Preprocessor:
                 else:
                     scripted = 0
         return sensor_data, mode, notes, scripted
-
-
-
-
-
-
-
 
     @staticmethod
     def unpack_all_trips(dfs: dict):
