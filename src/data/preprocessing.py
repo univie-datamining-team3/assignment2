@@ -48,19 +48,12 @@ class Preprocessor:
             # 5.Convert timestamps to human readable format
             dfs = Preprocessor.convert_timestamps(dfs, unit="ms")
 
-            # 5. Resample time series.
-            #resampled_sensor_values = Preprocessor._resample_trip_time_series(dfs)
-
-            # 6. Drop nan values:
-            #drop_almost_all_nans_ratio = 0.001
-            #resampled_sensor_values = Preprocessor._filter_nan_values(resampled_sensor_values,  properties_to_check=["total"],
-            #                                                          allowed_nan_ratio=drop_almost_all_nans_ratio)
-
-            # 7. Recalculate 2-norm for accerelometer data.
-            #resampled_sensor_values = Preprocessor._recalculate_accerelometer_2norm(resampled_sensor_values)
 
             # Prepare dictionary with results.
             preprocessed_data[token] = resampled_sensor_values
+
+        # 6. Cut all trips in 30 second snippets
+        trips_cut_per_30_sec = Preprocessor.get_cut_trip_snippets(preprocessed_data, snippet_length=30)
 
         # Dump data to file, if requested.
         if filename is not None:
@@ -71,8 +64,121 @@ class Preprocessor:
             full_path = os.path.join(preprocessed_path, filename)
             with open(full_path, "wb") as file:
                 file.write(pickle.dumps(preprocessed_data))
+            full_path = full_path[:-4] + ".csv"
+            trips_cut_per_30_sec.to_csv(full_path, sep=";", index=False)
 
         return preprocessed_data
+
+
+    @staticmethod
+    def get_cut_trip_snippets(dfs, snippet_length=30, sensor_type="acceleration"):
+        """
+        This method gets a dictionary of trips per token and cuts them in the
+        specified snippet_length.
+
+        Parameters
+        ----------
+        dfs: dictionary with the assumed nested structure
+            dict[token] = list of trips per token and each trip consists of tables for
+            at least "annotation" and "sensor"
+        snippet_length: int, default=30,
+            specifies the length of the time snippets in seconds
+        sensor_type: string, default="acceleration"
+            specifies which sensor type should be used for each entry
+
+        Returns
+        -------
+        result: returns a pandas.DataFrame where each row is a snippet with length snippet_length
+                and each column is one recording step. Additional columns are:
+                "mode","notes","scripted","token", where scripted is a binary variable
+                where scripted=1 and ordinary=0
+        """
+        #all_trips = Preprocessor.unpack_all_trips(dfs)
+        HERTZ_RATE = 20
+        column_names = ["snippet_"+str(i) for i in range(snippet_length * HERTZ_RATE)]
+        column_names = column_names + ["mode","notes","scripted","token"]
+
+        #records = [(sensor, ) for trip in all_trips]
+        result = pd.DataFrame(columns=column_names)
+        for token_i, trips in dfs.items():
+            for trip_i in trips:
+                sensor_data, mode, notes, scripted = Preprocessor._get_row_entries_for_trip(trip_i, sensor_type=sensor_type)
+                splitted_trip = Preprocessor._cut_trip(sensor_data, snippet_length, column_names)
+                splitted_trip["mode"]=mode
+                if str(notes).lower() == "nan":
+                    splitted_trip["notes"]="empty"
+                else:
+                    splitted_trip["notes"]=notes
+                splitted_trip["scripted"]=scripted
+                splitted_trip["token"]=token_i
+                result = pd.concat([result, splitted_trip])
+
+        result.reset_index(drop=True, inplace=True)
+        return result
+
+    def _cut_trip(sensor_data, snippet_length=30, column_names=None):
+        """
+        Helper function to cut one trip into segments of snippet_length
+        and return the new pandas.DataFrame
+        """
+        HERTZ_RATE = 20
+        nr_of_trip_columns = HERTZ_RATE * snippet_length
+        if column_names is None:
+            column_names = ["snippet_"+str(i) for i in range(nr_of_trip_columns)]
+            column_names = column_names + ["mode","notes","scripted","token"]
+
+        result = pd.DataFrame(columns=column_names).drop(["mode","notes","scripted","token"],axis=1)
+        copied_sensor_data = sensor_data.reset_index(drop=True)
+        copied_sensor_data = copied_sensor_data
+        end_index = copied_sensor_data.index[-1]
+        # // floor division syntax
+        # the last segment wich is smaller than 30 seconds will be dropped
+        nr_of_rows = end_index // nr_of_trip_columns
+        start_index = 0
+        #print(copied_sensor_data.head(10))
+        for row_index in range(nr_of_rows):
+            to_index = start_index + nr_of_trip_columns
+            row_i = copied_sensor_data.loc[start_index:to_index-1,"total"]
+            result.loc[row_index,:] = list(row_i)
+            start_index = to_index
+
+        return result
+
+    def _get_row_entries_for_trip(trip,  sensor_type="acceleration"):
+        sensor_data, mode, notes, scripted = None, None, None, None
+        for table_name, table_content in trip.items():
+            if table_name == "sensor":
+                sensor_data = table_content[table_content["sensor"] == sensor_type]
+            if table_name == "annotation":
+                annotation_data = table_content
+                mode = annotation_data["mode"][0]
+                notes = annotation_data["notes"][0]
+                if "scripted" in str(notes).lower():
+                    scripted = 1
+                else:
+                    scripted = 0
+        return sensor_data, mode, notes, scripted
+
+
+
+
+
+
+
+
+    @staticmethod
+    def unpack_all_trips(dfs: dict):
+        """
+        Helper method that takes a dictionary of the trips per token and returns a list
+        of all trips. Assumed nested structure is:
+        dict[token] = list of trips per token
+        """
+        result = []
+        for token, trips in dfs.items():
+            result += trips
+        return result
+
+
 
 
     @staticmethod
