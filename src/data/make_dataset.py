@@ -17,6 +17,7 @@ import numpy
 
 FLAGS = None
 
+
 def main():
     """ Runs data processing scripts to turn raw data from (../raw) into
         cleaned data ready to be analyzed (saved in ../preprocessed).
@@ -41,10 +42,10 @@ def main():
     if FLAGS.preprocess or True:
         logger.info('start preprocessing data:')
         # Preprocess data. Store it in /data/preprocessed/preprocessed_data.dat.
-        dfs = Preprocessor.preprocess([os.environ.get("KEY_RAPHAEL"),
-                                       os.environ.get("KEY_MORITZ"),
-                                       os.environ.get("KEY_LUKAS")],
-                                      filename="preprocessed_data.dat")
+        dfs = Preprocessor.preprocess([os.environ.get("KEY_RAPHAEL")])
+                                       #os.environ.get("KEY_MORITZ"),
+                                       #os.environ.get("KEY_LUKAS")],
+                                       #filename="preprocessed_data.dat")
 
         # Load dataframes from disk.
         # dfs = Preprocessor.restore_preprocessed_data_from_disk(filename="preprocessed_data.dat")

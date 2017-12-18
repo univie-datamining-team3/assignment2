@@ -16,6 +16,18 @@ class Preprocessor:
     Class for preprocessing routines on the mobility data set.
     """
 
+    # Names of columns in all dataframes. Used to inject columns into empty dataframes.
+    DATAFRAME_COLUMN_NAMES = {
+        "cell": ['time', 'cid', 'lac', 'asu'],
+        "annotation": ['time', 'mode', 'notes'],
+        "location": ['time', 'gpstime', 'provider', 'longitude', 'latitude', 'altitude', 'speed', 'bearing',
+                     'accuracy'],
+        "sensor": ['sensor', 'time', 'x', 'y', 'z', 'total'],
+        "mac": ['time', 'ssid', 'level'],
+        "marker": ['time', 'marker'],
+        "event": ['time', 'event', 'state']
+    }
+
     @staticmethod
     def preprocess(tokens, filename: str = None):
         """
@@ -94,7 +106,8 @@ class Preprocessor:
         # concatenate new dictionaries to list.
         return [
             {
-                key: pd.DataFrame() if df_dict[key] is None else df_dict[key]
+                key: pd.DataFrame(columns=Preprocessor.DATAFRAME_COLUMN_NAMES[key])
+                if df_dict[key] is None else df_dict[key]
                 for key in df_dict
             } for df_dict in dataframe_dicts
         ]
