@@ -10,6 +10,8 @@ from pyts.visualization import plot_paa
 from pyts.transformation import PAA
 import pickle
 
+from scipy.spatial.distance import cdist, squareform
+
 
 class Preprocessor:
     """
@@ -53,7 +55,7 @@ class Preprocessor:
             preprocessed_data[token] = resampled_sensor_values
 
         # 6. Cut all trips in 30 second snippets
-        trips_cut_per_30_sec = Preprocessor.get_cut_trip_snippets_for_total(preprocessed_data, snippet_length=30, sensor_type="acceleration", distance_calculation=None)
+        trips_cut_per_30_sec = Preprocessor.get_cut_trip_snippets_for_total(preprocessed_data, snippet_length=30, sensor_type="acceleration", distance_metric=None)
 
         # Dump data to file, if requested.
         if filename is not None:
@@ -71,7 +73,7 @@ class Preprocessor:
 
 
     @staticmethod
-    def get_cut_trip_snippets_for_total(dfs, snippet_length=30, sensor_type="acceleration", distance_calculation=None):
+    def get_cut_trip_snippets_for_total(dfs, snippet_length=30, sensor_type="acceleration", distance_metric=None):
         """
         This method gets a dictionary of trips per token and cuts them in the
         specified snippet_length. It only uses the one dimensional "total" column
@@ -87,19 +89,36 @@ class Preprocessor:
             specifies the length of the time snippets in seconds
         sensor_type: string, default="acceleration"
             specifies which sensor type should be used for each entry
-        distance_calculation: string, default=None,
-            specifies which distance_calculation method should be used. If None
-            then no distance calculation is executed.
+        distance_metric: string, default=None,
+            specifies which distance_metric method should be used. If None
+            then no distance calculation is executed. The distance is calculated
+            with the highly optimized cdist function of scipy.spatial.distance.
+            This makes it simple to use a wide variety of distance metrics, some
+            of them listed below.
             Mandatory Distance Calculations:
                 "euclidean" : calculates the euclidean distance
-                              not implemented yet!
+                "cityblock" : calculates the manhattan distance
+                "cosine"    : calculates the cosine distance
+            for a full list of all distances see:
+            https://docs.scipy.org/doc/scipy/reference/generated/scipy.spatial.distance.cdist.html
+
 
         Returns
         -------
-        result: returns a pandas.DataFrame where each row is a snippet with length snippet_length
-                and each column is one recording step. Additional columns are:
-                "mode","notes","scripted","token", where scripted is a binary variable
-                where scripted=1 and ordinary=0
+        result: If distance_metric is None:
+                    returns a pandas.DataFrame where each row is a snippet with length snippet_length
+                    and each column is one recording step. Each entry corresponds
+                    to the total aka n2 value of the original data. Additional columns are:
+                    "mode","notes","scripted","token", where scripted is a binary variable
+                    where scripted=1 and ordinary=0
+                else:
+                    returns a pandas.DataFrame where each each point in the distance matrix
+                    is the distance of one trip segment to another one and each row of the
+                    distance matrix corresponds to the trips segment distances to all other
+                    trip segments.  Additional columns are: "mode","notes","scripted","token",
+                    where scripted is a binary variable where scripted=1 and ordinary=0
+                    Note that the dimensionality of the result can be (for most cases)
+                    different to the dimensionality of the incoming data pandas.DataFrame.
         """
         HERTZ_RATE = 20
         column_names = ["snippet_"+str(i) for i in range(snippet_length * HERTZ_RATE)]
@@ -120,8 +139,62 @@ class Preprocessor:
                 result = pd.concat([result, splitted_trip])
 
         result.reset_index(drop=True, inplace=True)
-        if distance_calculation is None:
+        if distance_metric is None:
             result = result
+        else:
+            result = Preprocessor._calculate_distance_for_n2(result, metric=distance_metric)
+        return result
+
+    @staticmethod
+    def _calculate_distance_for_n2(data, metric="euclidean"):
+        """
+        This method calculates the specified distance metric for norms of the x,y,z signal,
+        also called n2 or total in the assignment.
+
+        Parameters
+        ----------
+        data: pandas.DataFrame of the trip segments and the
+              ["mode","notes","scripted","token"] columns
+        metric: string, default="euclidean",
+            specifies which distance metric method should be used. The distance is calculated
+            with the highly optimized cdist function of scipy.spatial.distance.
+            This makes it simple to use a wide variety of distance metrics, some
+            of them listed below.
+            Mandatory Distance Calculations:
+                "euclidean" : calculates the euclidean distance
+                "cityblock" : calculates the manhattan distance
+                "cosine"    : calculates the cosine distance
+            for a full list of all distances see:
+            https://docs.scipy.org/doc/scipy/reference/generated/scipy.spatial.distance.cdist.html
+
+
+        Returns
+        -------
+        result: returns a pandas.DataFrame where each each point in the distance matrix
+                is the distance of one trip segment to another one and each row of the
+                distance matrix corresponds to the trips segment distances to all other
+                trip segments.  Additional columns are: "mode","notes","scripted","token",
+                where scripted is a binary variable where scripted=1 and ordinary=0
+                Note that the dimensionality of the result can be (for most cases)
+                different to the dimensionality of the incoming data pandas.DataFrame.
+
+        """
+
+        small_df = data.drop(["mode","notes","scripted","token"],axis=1)
+        #column_names = list(small_df.columns.values)
+        nr_of_rows =  small_df.shape[0]
+        nr_of_columns = small_df.shape[1]
+        # The new dataframe has dimensionality of nr_of_rows x nr_of_rows
+        column_names = ["distance_"+str(i) for i in range(nr_of_rows)]
+        result = pd.DataFrame(columns=column_names)
+
+
+        distance_matrix = cdist(small_df, small_df, metric=metric)
+        result = pd.concat([result,pd.DataFrame(distance_matrix,columns=column_names)])
+
+        # Reappend the categorical columns
+        for colname in ["mode","notes","scripted","token"]:
+            result[colname] = data[colname]
         return result
 
     def _cut_trip(sensor_data, snippet_length=30, column_names=None):
@@ -144,7 +217,7 @@ class Preprocessor:
         # the last segment wich is smaller than 30 seconds will be dropped
         nr_of_rows = end_index // nr_of_trip_columns
         start_index = 0
-        #print(copied_sensor_data.head(10))
+
         for row_index in range(nr_of_rows):
             to_index = start_index + nr_of_trip_columns
             row_i = copied_sensor_data.loc[start_index:to_index-1,"total"]
@@ -154,6 +227,11 @@ class Preprocessor:
         return result
 
     def _get_row_entries_for_trip(trip,  sensor_type="acceleration"):
+        """
+        Helper function which splits on trip into the four parts
+        sensor_data, mode, notes and scripted, where scripted is
+        a binary variable where scripted=1 and ordinary=0
+        """
         sensor_data, mode, notes, scripted = None, None, None, None
         for table_name, table_content in trip.items():
             if table_name == "sensor":
