@@ -10,6 +10,8 @@ from pyts.visualization import plot_paa
 from pyts.transformation import PAA
 import pickle
 
+from scipy.spatial.distance import cdist, squareform
+
 
 class Preprocessor:
     """
@@ -29,7 +31,7 @@ class Preprocessor:
     }
 
     @staticmethod
-    def preprocess(tokens, filename: str = None):
+    def preprocess(tokens, filename: str = None, distance_metric="euclidean"):
         """
         Executes all preprocessing steps.
         :param tokens: List with keys of tokens to preprocess.
@@ -67,19 +69,16 @@ class Preprocessor:
                 Preprocessor.calculate_paa(dfs)
             )
 
-            # 5. Resample time series.
-            #resampled_sensor_values = Preprocessor._resample_trip_time_series(dfs)
-
-            # 6. Drop nan values:
-            #drop_almost_all_nans_ratio = 0.001
-            #resampled_sensor_values = Preprocessor._filter_nan_values(resampled_sensor_values,  properties_to_check=["total"],
-            #                                                          allowed_nan_ratio=drop_almost_all_nans_ratio)
-
-            # 7. Recalculate 2-norm for accerelometer data.
-            #resampled_sensor_values = Preprocessor._recalculate_accerelometer_2norm(resampled_sensor_values)
 
             # Prepare dictionary with results.
             preprocessed_data[token] = resampled_sensor_values
+
+        # 6. Cut all trips in 30 second snippets
+        trips_cut_per_30_sec = Preprocessor.get_cut_trip_snippets_for_total(preprocessed_data, snippet_length=30, sensor_type="acceleration")
+
+        # 7. Apply distance metric and calculate distance matrix
+        if distance_metric is not None:
+            distance_matrix_n2 = Preprocessor.calculate_distance_for_n2(trips_cut_per_30_sec, metric=distance_metric)
 
         # Dump data to file, if requested.
         if filename is not None:
@@ -90,6 +89,13 @@ class Preprocessor:
             full_path = os.path.join(preprocessed_path, filename)
             with open(full_path, "wb") as file:
                 file.write(pickle.dumps(preprocessed_data))
+
+            trips_cut_per_30_sec_path = full_path[:-4] + "_total.csv"
+            trips_cut_per_30_sec.to_csv(trips_cut_per_30_sec_path, sep=";", index=False)
+
+            if distance_metric is not None:
+                distance_matrix_n2_path = full_path[:-4] + "_" + distance_metric + ".csv"
+                distance_matrix_n2.to_csv(distance_matrix_n2_path, sep=";", index=False)
 
         return preprocessed_data
 
@@ -111,6 +117,170 @@ class Preprocessor:
                 for key in df_dict
             } for df_dict in dataframe_dicts
         ]
+
+    @staticmethod
+    def get_cut_trip_snippets_for_total(dfs, snippet_length=30, sensor_type="acceleration"):
+        """
+        This method gets a dictionary of trips per token and cuts them in the
+        specified snippet_length. It only uses the one dimensional "total" column
+        of the sensor table, this is in opposition to the calculation of the values
+        from the x,y,z parameters.
+
+        Parameters
+        ----------
+        dfs: dictionary with the assumed nested structure
+            dict[token] = list of trips per token and each trip consists of tables for
+            at least "annotation" and "sensor"
+        snippet_length: int, default=30,
+            specifies the length of the time snippets in seconds
+        sensor_type: string, default="acceleration"
+            specifies which sensor type should be used for each entry
+
+        Returns
+        -------
+        result: returns a pandas.DataFrame where each row is a snippet with length snippet_length
+                and each column is one recording step. Each entry corresponds
+                to the total aka n2 value of the original data. Additional columns are:
+                "mode","notes","scripted","token", where scripted is a binary variable
+                where scripted=1 and ordinary=0
+        """
+        HERTZ_RATE = 20
+        column_names = ["snippet_"+str(i) for i in range(snippet_length * HERTZ_RATE)]
+        column_names = column_names + ["mode","notes","scripted","token"]
+
+        result = pd.DataFrame(columns=column_names)
+        for token_i, trips in dfs.items():
+            for trip_i in trips:
+                sensor_data, mode, notes, scripted = Preprocessor._get_row_entries_for_trip(trip_i, sensor_type=sensor_type)
+                splitted_trip = Preprocessor._cut_trip(sensor_data, snippet_length, column_names)
+                splitted_trip["mode"]=mode
+                if str(notes).lower() == "nan":
+                    splitted_trip["notes"]="empty"
+                else:
+                    splitted_trip["notes"]=notes
+                splitted_trip["scripted"]=scripted
+                splitted_trip["token"]=token_i
+                result = pd.concat([result, splitted_trip])
+
+        result.reset_index(drop=True, inplace=True)
+
+        return result
+
+    @staticmethod
+    def calculate_distance_for_n2(data, metric="euclidean"):
+        """
+        This method calculates the specified distance metric for norms of the x,y,z signal,
+        also called n2 or total in the assignment.
+
+        Parameters
+        ----------
+        data: pandas.DataFrame of the trip segments and the
+              ["mode","notes","scripted","token"] columns
+        metric: string, default="euclidean",
+            specifies which distance metric method should be used. The distance is calculated
+            with the highly optimized cdist function of scipy.spatial.distance.
+            This makes it simple to use a wide variety of distance metrics, some
+            of them listed below.
+            Mandatory Distance Calculations:
+                "euclidean" : calculates the euclidean distance
+                "cityblock" : calculates the manhattan distance
+                "cosine"    : calculates the cosine distance
+            for a full list of all distances see:
+            https://docs.scipy.org/doc/scipy/reference/generated/scipy.spatial.distance.cdist.html
+
+
+        Returns
+        -------
+        result: returns a pandas.DataFrame where each each point in the distance matrix
+                is the distance of one trip segment to another one and each row of the
+                distance matrix corresponds to the trips segment distances to all other
+                trip segments.  Additional columns are: "mode","notes","scripted","token",
+                where scripted is a binary variable where scripted=1 and ordinary=0
+                Note that the dimensionality of the result can be (for most cases)
+                different to the dimensionality of the incoming data pandas.DataFrame.
+
+        """
+
+        small_df = data.drop(["mode","notes","scripted","token"],axis=1)
+        #column_names = list(small_df.columns.values)
+        nr_of_rows =  small_df.shape[0]
+        nr_of_columns = small_df.shape[1]
+        # The new dataframe has dimensionality of nr_of_rows x nr_of_rows
+        column_names = ["distance_"+str(i) for i in range(nr_of_rows)]
+        result = pd.DataFrame(columns=column_names)
+
+
+        distance_matrix = cdist(small_df, small_df, metric=metric)
+        result = pd.concat([result,pd.DataFrame(distance_matrix,columns=column_names)])
+
+        # Reappend the categorical columns
+        for colname in ["mode","notes","scripted","token"]:
+            result[colname] = data[colname]
+        return result
+
+    @staticmethod
+    def _cut_trip(sensor_data, snippet_length=30, column_names=None):
+        """
+        Helper function to cut one trip into segments of snippet_length
+        and return the new pandas.DataFrame that includes the "total"
+        of each value.
+        """
+        HERTZ_RATE = 20
+        nr_of_trip_columns = HERTZ_RATE * snippet_length
+        if column_names is None:
+            column_names = ["snippet_"+str(i) for i in range(nr_of_trip_columns)]
+            column_names = column_names + ["mode","notes","scripted","token"]
+
+        result = pd.DataFrame(columns=column_names).drop(["mode","notes","scripted","token"],axis=1)
+        copied_sensor_data = sensor_data.reset_index(drop=True)
+        copied_sensor_data = copied_sensor_data
+        end_index = copied_sensor_data.index[-1]
+        # // floor division syntax
+        # the last segment wich is smaller than 30 seconds will be dropped
+        nr_of_rows = end_index // nr_of_trip_columns
+        start_index = 0
+
+        for row_index in range(nr_of_rows):
+            to_index = start_index + nr_of_trip_columns
+            row_i = copied_sensor_data.loc[start_index:to_index-1,"total"]
+            result.loc[row_index,:] = list(row_i)
+            start_index = to_index
+
+        return result
+
+    @staticmethod
+    def _get_row_entries_for_trip(trip,  sensor_type="acceleration"):
+        """
+        Helper function which splits on trip into the four parts
+        sensor_data, mode, notes and scripted, where scripted is
+        a binary variable where scripted=1 and ordinary=0
+        """
+        sensor_data, mode, notes, scripted = None, None, None, None
+        for table_name, table_content in trip.items():
+            if table_name == "sensor":
+                sensor_data = table_content[table_content["sensor"] == sensor_type]
+            if table_name == "annotation":
+                annotation_data = table_content
+                mode = annotation_data["mode"][0]
+                notes = annotation_data["notes"][0]
+                if "scripted" in str(notes).lower():
+                    scripted = 1
+                else:
+                    scripted = 0
+        return sensor_data, mode, notes, scripted
+
+    @staticmethod
+    def unpack_all_trips(dfs: dict):
+        """
+        Helper method that takes a dictionary of the trips per token and returns a list
+        of all trips. Assumed nested structure is:
+        dict[token] = list of trips per token
+        """
+        result = []
+        for token, trips in dfs.items():
+            result += trips
+        return result
+
 
     @staticmethod
     def restore_preprocessed_data_from_disk(filename: str):
