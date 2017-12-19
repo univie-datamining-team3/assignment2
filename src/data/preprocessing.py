@@ -19,7 +19,7 @@ class Preprocessor:
     """
 
     @staticmethod
-    def preprocess(tokens, filename: str = None):
+    def preprocess(tokens, filename: str = None, distance_metric="euclidean"):
         """
         Executes all preprocessing steps.
         :param tokens: List with keys of tokens to preprocess.
@@ -55,7 +55,11 @@ class Preprocessor:
             preprocessed_data[token] = resampled_sensor_values
 
         # 6. Cut all trips in 30 second snippets
-        trips_cut_per_30_sec = Preprocessor.get_cut_trip_snippets_for_total(preprocessed_data, snippet_length=30, sensor_type="acceleration", distance_metric=None)
+        trips_cut_per_30_sec = Preprocessor.get_cut_trip_snippets_for_total(preprocessed_data, snippet_length=30, sensor_type="acceleration")
+
+        # 7. Apply distance metric and calculate distance matrix
+        if distance_metric is not None:
+            distance_matrix_n2 = Preprocessor.calculate_distance_for_n2(trips_cut_per_30_sec, metric=distance_metric)
 
         # Dump data to file, if requested.
         if filename is not None:
@@ -66,14 +70,19 @@ class Preprocessor:
             full_path = os.path.join(preprocessed_path, filename)
             with open(full_path, "wb") as file:
                 file.write(pickle.dumps(preprocessed_data))
-            full_path = full_path[:-4] + ".csv"
-            trips_cut_per_30_sec.to_csv(full_path, sep=";", index=False)
+
+            trips_cut_per_30_sec_path = full_path[:-4] + "_total_.csv"
+            trips_cut_per_30_sec.to_csv(trips_cut_per_30_sec_path, sep=";", index=False)
+
+            if distance_metric is not None:
+                distance_matrix_n2_path = full_path[:-4] + "_" + distance_metric + ".csv"
+                distance_matrix_n2.to_csv(distance_matrix_n2_path, sep=";", index=False)
 
         return preprocessed_data
 
 
     @staticmethod
-    def get_cut_trip_snippets_for_total(dfs, snippet_length=30, sensor_type="acceleration", distance_metric=None):
+    def get_cut_trip_snippets_for_total(dfs, snippet_length=30, sensor_type="acceleration"):
         """
         This method gets a dictionary of trips per token and cuts them in the
         specified snippet_length. It only uses the one dimensional "total" column
@@ -89,36 +98,14 @@ class Preprocessor:
             specifies the length of the time snippets in seconds
         sensor_type: string, default="acceleration"
             specifies which sensor type should be used for each entry
-        distance_metric: string, default=None,
-            specifies which distance_metric method should be used. If None
-            then no distance calculation is executed. The distance is calculated
-            with the highly optimized cdist function of scipy.spatial.distance.
-            This makes it simple to use a wide variety of distance metrics, some
-            of them listed below.
-            Mandatory Distance Calculations:
-                "euclidean" : calculates the euclidean distance
-                "cityblock" : calculates the manhattan distance
-                "cosine"    : calculates the cosine distance
-            for a full list of all distances see:
-            https://docs.scipy.org/doc/scipy/reference/generated/scipy.spatial.distance.cdist.html
-
 
         Returns
         -------
-        result: If distance_metric is None:
-                    returns a pandas.DataFrame where each row is a snippet with length snippet_length
-                    and each column is one recording step. Each entry corresponds
-                    to the total aka n2 value of the original data. Additional columns are:
-                    "mode","notes","scripted","token", where scripted is a binary variable
-                    where scripted=1 and ordinary=0
-                else:
-                    returns a pandas.DataFrame where each each point in the distance matrix
-                    is the distance of one trip segment to another one and each row of the
-                    distance matrix corresponds to the trips segment distances to all other
-                    trip segments.  Additional columns are: "mode","notes","scripted","token",
-                    where scripted is a binary variable where scripted=1 and ordinary=0
-                    Note that the dimensionality of the result can be (for most cases)
-                    different to the dimensionality of the incoming data pandas.DataFrame.
+        result: returns a pandas.DataFrame where each row is a snippet with length snippet_length
+                and each column is one recording step. Each entry corresponds
+                to the total aka n2 value of the original data. Additional columns are:
+                "mode","notes","scripted","token", where scripted is a binary variable
+                where scripted=1 and ordinary=0
         """
         HERTZ_RATE = 20
         column_names = ["snippet_"+str(i) for i in range(snippet_length * HERTZ_RATE)]
@@ -139,14 +126,11 @@ class Preprocessor:
                 result = pd.concat([result, splitted_trip])
 
         result.reset_index(drop=True, inplace=True)
-        if distance_metric is None:
-            result = result
-        else:
-            result = Preprocessor._calculate_distance_for_n2(result, metric=distance_metric)
+
         return result
 
     @staticmethod
-    def _calculate_distance_for_n2(data, metric="euclidean"):
+    def calculate_distance_for_n2(data, metric="euclidean"):
         """
         This method calculates the specified distance metric for norms of the x,y,z signal,
         also called n2 or total in the assignment.
@@ -197,6 +181,7 @@ class Preprocessor:
             result[colname] = data[colname]
         return result
 
+    @staticmethod
     def _cut_trip(sensor_data, snippet_length=30, column_names=None):
         """
         Helper function to cut one trip into segments of snippet_length
@@ -226,6 +211,7 @@ class Preprocessor:
 
         return result
 
+    @staticmethod
     def _get_row_entries_for_trip(trip,  sensor_type="acceleration"):
         """
         Helper function which splits on trip into the four parts
@@ -257,8 +243,6 @@ class Preprocessor:
         for token, trips in dfs.items():
             result += trips
         return result
-
-
 
 
     @staticmethod
