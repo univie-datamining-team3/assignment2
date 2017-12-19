@@ -71,7 +71,7 @@ class Preprocessor:
             with open(full_path, "wb") as file:
                 file.write(pickle.dumps(preprocessed_data))
 
-            trips_cut_per_30_sec_path = full_path[:-4] + "_total_.csv"
+            trips_cut_per_30_sec_path = full_path[:-4] + "_total.csv"
             trips_cut_per_30_sec.to_csv(trips_cut_per_30_sec_path, sep=";", index=False)
 
             if distance_metric is not None:
