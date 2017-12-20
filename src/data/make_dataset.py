@@ -39,7 +39,7 @@ def main():
         DatasetDownloader.download_all()
         logger.info('downloading was successfull')
 
-    if FLAGS.preprocess or True:
+    if FLAGS.preprocess:
         logger.info('start preprocessing data:')
         # Preprocess data. Store it in /data/preprocessed/preprocessed_data.dat.
         dfs = Preprocessor.preprocess([os.environ.get("KEY_RAPHAEL"),

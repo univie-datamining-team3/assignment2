@@ -141,14 +141,16 @@ class Preprocessor:
         result: returns a pandas.DataFrame where each row is a snippet with length snippet_length
                 and each column is one recording step. Each entry corresponds
                 to the total aka n2 value of the original data. Additional columns are:
-                "mode","notes","scripted","token", where scripted is a binary variable
-                where scripted=1 and ordinary=0
+                "mode","notes","scripted","token","trip_id", where scripted is a binary variable
+                where scripted=1 and ordinary=0. "trip_id" helps to identify which snippet, belongs
+                to which trip.
         """
         HERTZ_RATE = 20
         column_names = ["snippet_"+str(i) for i in range(snippet_length * HERTZ_RATE)]
-        column_names = column_names + ["mode","notes","scripted","token"]
+        column_names = column_names + ["mode","notes","scripted","token", "trip_id"]
 
         result = pd.DataFrame(columns=column_names)
+        trip_index = 0
         for token_i, trips in dfs.items():
             for trip_i in trips:
                 sensor_data, mode, notes, scripted = Preprocessor._get_row_entries_for_trip(trip_i, sensor_type=sensor_type)
@@ -160,6 +162,8 @@ class Preprocessor:
                     splitted_trip["notes"]=notes
                 splitted_trip["scripted"]=scripted
                 splitted_trip["token"]=token_i
+                splitted_trip["trip_id"]=trip_index
+                trip_index += 1
                 result = pd.concat([result, splitted_trip])
 
         result.reset_index(drop=True, inplace=True)
@@ -200,8 +204,8 @@ class Preprocessor:
                 different to the dimensionality of the incoming data pandas.DataFrame.
 
         """
-
-        small_df = data.drop(["mode","notes","scripted","token"],axis=1)
+        categorical_colnames=["mode","notes","scripted","token", "trip_id"]
+        small_df = data.drop(categorical_colnames, axis=1)
         #column_names = list(small_df.columns.values)
         nr_of_rows =  small_df.shape[0]
         nr_of_columns = small_df.shape[1]
@@ -214,7 +218,7 @@ class Preprocessor:
         result = pd.concat([result,pd.DataFrame(distance_matrix,columns=column_names)])
 
         # Reappend the categorical columns
-        for colname in ["mode","notes","scripted","token"]:
+        for colname in categorical_colnames:
             result[colname] = data[colname]
         return result
 
@@ -227,11 +231,12 @@ class Preprocessor:
         """
         HERTZ_RATE = 20
         nr_of_trip_columns = HERTZ_RATE * snippet_length
+        categorical_colnames = ["mode","notes","scripted","token", "trip_id"]
         if column_names is None:
             column_names = ["snippet_"+str(i) for i in range(nr_of_trip_columns)]
-            column_names = column_names + ["mode","notes","scripted","token"]
+            column_names = column_names + categorical_colnames
 
-        result = pd.DataFrame(columns=column_names).drop(["mode","notes","scripted","token"],axis=1)
+        result = pd.DataFrame(columns=column_names).drop(categorical_colnames, axis=1)
         copied_sensor_data = sensor_data.reset_index(drop=True)
         copied_sensor_data = copied_sensor_data
         end_index = copied_sensor_data.index[-1]
