@@ -799,14 +799,32 @@ class Preprocessor:
         return dfs
 
     @staticmethod
+    def _get_shallow_copy(dfs: list):
+        """ Helper function to get a shallow copy of the list of dictionaries
+            as only sensor data is modified and the rest can be references.
+        """
+        nr_of_trips = len(dfs)
+        result = [{} for trip in range(nr_of_trips)]
+        for trip_index, trip_i in enumerate(dfs):
+            for key, values in trip_i.items():
+                if key == "sensor":
+                    result[trip_index][key] = None
+                else:
+                    result[trip_index][key] = values
+        return result
+
+
+    @staticmethod
     def calculate_paa(dfs, verbose=False):
         # new dict
-        newDict = deepcopy(dfs)
-        for i in range(0, len(newDict)):
+        # newDict = deepcopy(dfs)
+        newDict = Preprocessor._get_shallow_copy(dfs)
+        nr_of_trips = len(dfs)
+        for i in range(0, nr_of_trips):
             if verbose:
                 print('Frame ', i)
             #get single trip
-            sensor_trip = newDict[i]['sensor']
+            sensor_trip = dfs[i]['sensor']
             #get all sensors
             sensor_set = set(sensor_trip['sensor'])
             #create new data frame
@@ -815,8 +833,11 @@ class Preprocessor:
             for sensor in sensor_set:
                 if verbose:
                     print("sensor: ", sensor)
+
+                # This is not necessary because approx_sensor returns a new df
                 # make deep copy of data frame
-                sensor_data = deepcopy(sensor_trip[sensor_trip['sensor'] == sensor])
+                #sensor_data = deepcopy(sensor_trip[sensor_trip['sensor'] == sensor])
+                sensor_data = sensor_trip[sensor_trip['sensor'] == sensor]
 
                 if verbose:
                     print('init time frame')
@@ -825,11 +846,12 @@ class Preprocessor:
 
                 sensor_data = sensor_data.drop(['sensor', 'total'], axis=1)
                 sensor_data.reset_index(drop=True,inplace=True)
-                sensor_data = Preprocessor.approx_sensor(sensor_data, 100)
+                # instead of deepcopy just need a new variable
+                sensor_data_approximated = Preprocessor.approx_sensor(sensor_data, 100)
 
                 start_index = 0
                 stop_index = 1
-                end_of_df = len(sensor_data)
+                end_of_df = len(sensor_data_approximated)
 
                 buffer_helper = pd.DataFrame()
                 filler = pd.DataFrame()
@@ -844,15 +866,16 @@ class Preprocessor:
                     else:
                         stop_index = end_of_df+1
 
-                    buffer_helper = deepcopy(sensor_data.iloc[start_index:stop_index,:])
-                    buffer_helper = Preprocessor.normalize_trip(buffer_helper)
+                    # not needed
+                    #buffer_helper = deepcopy(sensor_data_approximated.iloc[start_index:stop_index,:])
+                    buffer_helper = Preprocessor.normalize_trip(sensor_data_approximated.iloc[start_index:stop_index,:])
 
-                    if verbose:
-                        print('normalization start:', start_index)
-                        print('normalization stop:', stop_index)
-                        print(Preprocessor.convert_timestamps(buffer_helper.head(1))['time'])
-                        print(Preprocessor.convert_timestamps(buffer_helper.tail(1))['time'])
-                        print('************************')
+                    # if verbose:
+                    #     print('normalization start:', start_index)
+                    #     print('normalization stop:', stop_index)
+                    #     print(Preprocessor.convert_timestamps(buffer_helper.head(1))['time'])
+                    #     print(Preprocessor.convert_timestamps(buffer_helper.tail(1))['time'])
+                    #     print('************************')
 
                     filler = filler.append(buffer_helper)
                     start_index = stop_index
@@ -926,13 +949,14 @@ class Preprocessor:
         -------
         df : a pandas DataFrame containing the interpolated series
         """
-        copy_dummy = deepcopy(trip)
+        # not needed
+        #copy_dummy = deepcopy(trip)
 
         paa = PAA(window_size=5, output_size=None, overlapping=False)
-        container = list()
-
-        for label in copy_dummy.columns:
-            arr = np.array([copy_dummy[label]], dtype=np.float64)
+        container = []
+        for label in trip.columns:
+            # this creates a new object, change to float32 increases speed
+            arr = np.array([trip[label]], dtype=np.float64)
             transf = paa.transform(arr)
             container.append(list(transf[0]))
 
