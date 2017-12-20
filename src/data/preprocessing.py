@@ -141,14 +141,16 @@ class Preprocessor:
         result: returns a pandas.DataFrame where each row is a snippet with length snippet_length
                 and each column is one recording step. Each entry corresponds
                 to the total aka n2 value of the original data. Additional columns are:
-                "mode","notes","scripted","token", where scripted is a binary variable
-                where scripted=1 and ordinary=0
+                "mode","notes","scripted","token","trip_id", where scripted is a binary variable
+                where scripted=1 and ordinary=0. "trip_id" helps to identify which snippet, belongs
+                to which trip.
         """
         HERTZ_RATE = 20
         column_names = ["snippet_"+str(i) for i in range(snippet_length * HERTZ_RATE)]
-        column_names = column_names + ["mode","notes","scripted","token"]
+        column_names = column_names + ["mode","notes","scripted","token", "trip_id"]
 
         result = pd.DataFrame(columns=column_names)
+        trip_index = 0
         for token_i, trips in dfs.items():
             for trip_i in trips:
                 sensor_data, mode, notes, scripted = Preprocessor._get_row_entries_for_trip(trip_i, sensor_type=sensor_type)
@@ -160,6 +162,8 @@ class Preprocessor:
                     splitted_trip["notes"]=notes
                 splitted_trip["scripted"]=scripted
                 splitted_trip["token"]=token_i
+                splitted_trip["trip_id"]=trip_index
+                trip_index += 1
                 result = pd.concat([result, splitted_trip])
 
         result.reset_index(drop=True, inplace=True)
@@ -200,8 +204,8 @@ class Preprocessor:
                 different to the dimensionality of the incoming data pandas.DataFrame.
 
         """
-
-        small_df = data.drop(["mode","notes","scripted","token"],axis=1)
+        categorical_colnames=["mode","notes","scripted","token", "trip_id"]
+        small_df = data.drop(categorical_colnames, axis=1)
         #column_names = list(small_df.columns.values)
         nr_of_rows =  small_df.shape[0]
         nr_of_columns = small_df.shape[1]
@@ -214,7 +218,7 @@ class Preprocessor:
         result = pd.concat([result,pd.DataFrame(distance_matrix,columns=column_names)])
 
         # Reappend the categorical columns
-        for colname in ["mode","notes","scripted","token"]:
+        for colname in categorical_colnames:
             result[colname] = data[colname]
         return result
 
@@ -227,11 +231,12 @@ class Preprocessor:
         """
         HERTZ_RATE = 20
         nr_of_trip_columns = HERTZ_RATE * snippet_length
+        categorical_colnames = ["mode","notes","scripted","token", "trip_id"]
         if column_names is None:
             column_names = ["snippet_"+str(i) for i in range(nr_of_trip_columns)]
-            column_names = column_names + ["mode","notes","scripted","token"]
+            column_names = column_names + categorical_colnames
 
-        result = pd.DataFrame(columns=column_names).drop(["mode","notes","scripted","token"],axis=1)
+        result = pd.DataFrame(columns=column_names).drop(categorical_colnames, axis=1)
         copied_sensor_data = sensor_data.reset_index(drop=True)
         copied_sensor_data = copied_sensor_data
         end_index = copied_sensor_data.index[-1]
@@ -799,14 +804,30 @@ class Preprocessor:
         return dfs
 
     @staticmethod
+    def _get_shallow_copy(dfs: list):
+        """ Helper function to get a shallow copy of the list of dictionaries
+            as only sensor data is modified and the rest can be references.
+        """
+        nr_of_trips = len(dfs)
+        result = [{} for trip in range(nr_of_trips)]
+        for trip_index, trip_i in enumerate(dfs):
+            for key, values in trip_i.items():
+                if key == "sensor":
+                    result[trip_index][key] = None
+                else:
+                    result[trip_index][key] = values
+        return result
+
+
+    @staticmethod
     def calculate_paa(dfs, verbose=False):
-        # new dict
-        newDict = deepcopy(dfs)
-        for i in range(0, len(newDict)):
+        newDict = Preprocessor._get_shallow_copy(dfs)
+        nr_of_trips = len(dfs)
+        for i in range(0, nr_of_trips):
             if verbose:
                 print('Frame ', i)
             #get single trip
-            sensor_trip = newDict[i]['sensor']
+            sensor_trip = dfs[i]['sensor']
             #get all sensors
             sensor_set = set(sensor_trip['sensor'])
             #create new data frame
@@ -815,8 +836,8 @@ class Preprocessor:
             for sensor in sensor_set:
                 if verbose:
                     print("sensor: ", sensor)
-                # make deep copy of data frame
-                sensor_data = deepcopy(sensor_trip[sensor_trip['sensor'] == sensor])
+
+                sensor_data = sensor_trip[sensor_trip['sensor'] == sensor]
 
                 if verbose:
                     print('init time frame')
@@ -825,11 +846,11 @@ class Preprocessor:
 
                 sensor_data = sensor_data.drop(['sensor', 'total'], axis=1)
                 sensor_data.reset_index(drop=True,inplace=True)
-                sensor_data = Preprocessor.approx_sensor(sensor_data, 100)
+                sensor_data_approximated = Preprocessor.approx_sensor(sensor_data, 100)
 
                 start_index = 0
                 stop_index = 1
-                end_of_df = len(sensor_data)
+                end_of_df = len(sensor_data_approximated)
 
                 buffer_helper = pd.DataFrame()
                 filler = pd.DataFrame()
@@ -844,15 +865,7 @@ class Preprocessor:
                     else:
                         stop_index = end_of_df+1
 
-                    buffer_helper = deepcopy(sensor_data.iloc[start_index:stop_index,:])
-                    buffer_helper = Preprocessor.normalize_trip(buffer_helper)
-
-                    if verbose:
-                        print('normalization start:', start_index)
-                        print('normalization stop:', stop_index)
-                        print(Preprocessor.convert_timestamps(buffer_helper.head(1))['time'])
-                        print(Preprocessor.convert_timestamps(buffer_helper.tail(1))['time'])
-                        print('************************')
+                    buffer_helper = Preprocessor.normalize_trip(sensor_data_approximated.iloc[start_index:stop_index,:])
 
                     filler = filler.append(buffer_helper)
                     start_index = stop_index
@@ -926,13 +939,12 @@ class Preprocessor:
         -------
         df : a pandas DataFrame containing the interpolated series
         """
-        copy_dummy = deepcopy(trip)
 
         paa = PAA(window_size=5, output_size=None, overlapping=False)
-        container = list()
-
-        for label in copy_dummy.columns:
-            arr = np.array([copy_dummy[label]], dtype=np.float64)
+        container = []
+        for label in trip.columns:
+            # this creates a new object, change to float32 increases speed
+            arr = np.array([trip[label]], dtype=np.float64)
             transf = paa.transform(arr)
             container.append(list(transf[0]))
 
@@ -953,7 +965,7 @@ class Preprocessor:
             print("sensor: ", sensor)
             # get all sensor data for specific sensor
             sensor_data = deepcopy(df[df["sensor"] == sensor])
-            #reset indices
+
             sensor_data.reset_index(drop=True,inplace=True)
 
             start = min(sensor_data['time'])
