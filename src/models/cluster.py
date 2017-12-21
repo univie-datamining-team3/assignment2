@@ -2,7 +2,9 @@ from sklearn import metrics
 
 
 def calculate_silhouette_score(features, cluster_assignments):
-
+    """
+    Returns string with Silhouette Coefficient
+    """
     if len(set(cluster_assignments)) > 1:
         result = ("Silhouette Coefficient: %0.3f"
               % metrics.silhouette_score(features, cluster_assignments))

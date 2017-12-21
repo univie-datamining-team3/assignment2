@@ -179,7 +179,7 @@ class Preprocessor:
         Parameters
         ----------
         data: pandas.DataFrame of the trip segments and the
-              ["mode","notes","scripted","token"] columns
+              ["mode","notes","scripted","token", "trip_id"] columns
         metric: string, default="euclidean",
             specifies which distance metric method should be used. The distance is calculated
             with the highly optimized cdist function of scipy.spatial.distance.

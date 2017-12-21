@@ -183,17 +183,43 @@ def _get_cluster_labels(labels, factor=600):
     return labels_multiplied
 
 def get_plot_timeseries_clustering_variables(distance_matrix, trips, trip_id, sensor_type="acceleration", x_column="time", y_column="total"):
+    """
+    This function helps to get the prepared variables as input
+    for plot_timeseries_clustering(x_time, y, labels, ax=None).
+
+    Parameters
+    ----------
+    distance_matrix: pandas.DataFrame of calculated distances
+        from the trip segments and addionally these
+        ["mode","notes","scripted","token", "trip_id"] columns
+    trips: all recorded trips as a list.
+    trip_id: int, specifies which trip will be plotted.
+    sensor_type: string, default="acceleration",
+        specifies which sensor type should be plotted
+    x_column: string, default="time",
+        specifies x_axis for the plot, because we have timeseries data this
+        should be a column of datetime values
+    y_column: string, default="total",
+        specifies y_axis for the plot
+
+
+    Returns
+    -------
+    x_column values for one trip
+    y_column values for one trip
+    cluster labels for one trip
+    """
     small_df_trip = distance_matrix[distance_matrix.trip_id == trip_id]
     helper = trips[trip_id]["sensor"]
     helper = helper[helper.sensor == sensor_type]
     # Important, because indices are not unique
     sensor_data_trip_i = helper.reset_index(drop=True)
 
-    labels = _get_cluster_labels(small_df_trip["cluster_labels"])
-    diff = sensor_data_trip_i.shape[0] - len(labels)
+    cluster_labels = _get_cluster_labels(small_df_trip["cluster_labels"])
+    diff = sensor_data_trip_i.shape[0] - len(cluster_labels)
     rows_to_be_dropped = sensor_data_trip_i.tail(diff).index
     sensor_data_trip_i = sensor_data_trip_i.drop(rows_to_be_dropped)
-    sensor_data_trip_i["cluster_labels"]= labels
+    sensor_data_trip_i["cluster_labels"]= cluster_labels
 
     return (list(sensor_data_trip_i[x_column]), list(sensor_data_trip_i[y_column]),
-            labels)
+            cluster_labels)
