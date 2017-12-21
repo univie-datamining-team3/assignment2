@@ -38,3 +38,17 @@ def check_for_nan_values(trips_per_token, verbose=False):
                     print("length:", len(trips_per_token[all_tokens[0]]["resampled_sensor_data"][i]))
 
     return found_nan
+
+
+def get_cluster_labels(labels, factor=600):
+    """
+    Each label is repeated factor=600 times. E.g. labels is a list
+    with [1,2] of length 2, then this method returns a list of length
+    1200 and the list is [1,1,1...,2,2,2]
+    """
+    # Make sure labels is iterable
+    copy = list(labels)
+    labels_multiplied = []
+    for label_list in ([i]*factor for i in copy):
+        labels_multiplied += label_list
+    return labels_multiplied
