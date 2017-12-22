@@ -151,7 +151,7 @@ class Preprocessor:
 
         result = pd.DataFrame(columns=column_names)
         trip_index = 0
-        for token_i, trips in dfs.items():
+        for token_i, trips in sorted(dfs.items()):
             for trip_i in trips:
                 sensor_data, mode, notes, scripted = Preprocessor._get_row_entries_for_trip(trip_i, sensor_type=sensor_type)
                 splitted_trip = Preprocessor._cut_trip(sensor_data, snippet_length, column_names)
@@ -179,7 +179,7 @@ class Preprocessor:
         Parameters
         ----------
         data: pandas.DataFrame of the trip segments and the
-              ["mode","notes","scripted","token"] columns
+              ["mode","notes","scripted","token", "trip_id"] columns
         metric: string, default="euclidean",
             specifies which distance metric method should be used. The distance is calculated
             with the highly optimized cdist function of scipy.spatial.distance.
@@ -282,7 +282,7 @@ class Preprocessor:
         dict[token] = list of trips per token
         """
         result = []
-        for token, trips in dfs.items():
+        for token, trips in sorted(dfs.items()):
             result += trips
         return result
 
