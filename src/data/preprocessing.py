@@ -8,9 +8,11 @@ import sys
 from scipy.interpolate import interp1d
 from pyts.visualization import plot_paa
 from pyts.transformation import PAA
-from fastdtw import fastdtw
 import pickle
 from scipy.spatial.distance import cdist, squareform
+import time
+from .DTWThread import DTWThread
+import psutil
 
 
 class Preprocessor:
@@ -31,12 +33,13 @@ class Preprocessor:
     }
 
     @staticmethod
-    def preprocess(tokens, filename: str = None, distance_metric="euclidean"):
+    def preprocess(tokens, filename: str = None, distance_metric: str = "euclidean"):
         """
         Executes all preprocessing steps.
         :param tokens: List with keys of tokens to preprocess.
         :param filename: Specifies name of file data should be dumped to. Not persisted to disk if specified value is
         None. Note that filename is relative; all files are stored in /data/preprocessed.
+        :param distance_metric: Distance metric to apply for comparison between trip segments.
         :return: Dictionary with preprocessed data. Specified tokens are used as keys.
         """
 
@@ -50,7 +53,7 @@ class Preprocessor:
                     # Get travel data per token.
                     Preprocessor.get_data_per_token(token)
                 )
-            )[:2]
+            )
 
             # 2. Remove trips less than 10 minutes long.
             dfs = Preprocessor.replace_none_values_with_empty_dataframes(
@@ -76,9 +79,10 @@ class Preprocessor:
         trips_cut_per_30_sec = Preprocessor.get_cut_trip_snippets_for_total(preprocessed_data, snippet_length=30, sensor_type="acceleration")
 
         # 7. Apply distance metric and calculate distance matrix
+        start = time.time()
         if distance_metric is not None:
             distance_matrix_n2 = Preprocessor.calculate_distance_for_n2(trips_cut_per_30_sec, metric=distance_metric)
-
+        print("duration for dist. calculation in min = ", (time.time() - start) / 60.0)
         # Dump data to file, if requested.
         if filename is not None:
             Preprocessor.persist_results(
@@ -258,14 +262,31 @@ class Preprocessor:
         # Initialize empty distance matrix.
         dist_matrix = np.zeros((data.shape[0], data.shape[0]), dtype=float)
 
-        # Calculate distance with fastDTW between each pairing of segments. Distances between elements to themselves
-        # are ignored and hence retain their intial value of 0.
-        for i in range(0, data.shape[0]):
-            for j in range(i, data.shape[0]):
-                dist_matrix[i, j], path = fastdtw(data.iloc[i].values, data.iloc[j].values, dist=norm)
-                dist_matrix[j, i] = dist_matrix[i, j]
+        # Note regarding multithreading: Splitting up by rows leads to imbalance amongst thread workloads.
+        # Instead, we split up all possible pairings to ensure even workloads and collect the results (and assemble
+        # the distance matrix) after the threads finished their calculations.
+        # Generate all pairings.
+        segment_pairings = [(i, j) for i in range(0, data.shape[0]) for j in range(0, data.shape[0]) if j > i]
 
-        print(dist_matrix)
+        # Set up multithreading. Run as many threads as logical cores are available on this machine - 1.
+        num_threads = psutil.cpu_count(logical=True)
+
+        threads = []
+        for i in range(0, num_threads):
+            # Calculate distance with fastDTW between each pairing of segments. Distances between elements to themselves
+            # are ignored and hence retain their intial value of 0.
+            thread = DTWThread(thread_id=i,
+                               num_threads=num_threads,
+                               segment_pairings=segment_pairings,
+                               distance_matrix=dist_matrix,
+                               data_to_process=data,
+                               norm=2)
+            threads.append(thread)
+            thread.start()
+
+        # Wait for threads to finish.
+        for thread in threads:
+            thread.join()
 
         return dist_matrix
 
