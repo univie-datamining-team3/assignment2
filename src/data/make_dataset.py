@@ -25,27 +25,26 @@ def main():
 
     logger = logging.getLogger(__name__)
 
-
     # Set environment variables.
     load_dotenv(find_dotenv())
     DatasetDownloader.URL = str(os.environ.get("URL"))
     DatasetDownloader.USERNAME = str(os.environ.get("LOGINNAME"))
     DatasetDownloader.PASSWORD = str(os.environ.get("LOGINPASSWORD"))
 
-
-    if FLAGS.download:
+    if False and FLAGS.download:
         # Download data.
         logger.info('start downloading data into raw:')
         DatasetDownloader.download_all()
         logger.info('downloading was successfull')
 
-    if FLAGS.preprocess:
+    if True or FLAGS.preprocess:
         logger.info('start preprocessing data:')
         # Preprocess data. Store it in /data/preprocessed/preprocessed_data.dat.
-        dfs = Preprocessor.preprocess([os.environ.get("KEY_RAPHAEL"),
-                                       os.environ.get("KEY_MORITZ"),
-                                       os.environ.get("KEY_LUKAS")],
-                                      filename="preprocessed_data.dat")
+        dfs = Preprocessor.preprocess([os.environ.get("KEY_RAPHAEL") ],
+                                      distance_metric='dtw')#,
+                                      #  os.environ.get("KEY_MORITZ"),
+                                      #  os.environ.get("KEY_LUKAS")],
+                                      # filename="preprocessed_data.dat")
 
         # Load dataframes from disk.
         # dfs = Preprocessor.restore_preprocessed_data_from_disk(filename="preprocessed_data.dat")

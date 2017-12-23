@@ -8,8 +8,8 @@ import sys
 from scipy.interpolate import interp1d
 from pyts.visualization import plot_paa
 from pyts.transformation import PAA
+from fastdtw import fastdtw
 import pickle
-
 from scipy.spatial.distance import cdist, squareform
 
 
@@ -50,7 +50,7 @@ class Preprocessor:
                     # Get travel data per token.
                     Preprocessor.get_data_per_token(token)
                 )
-            )
+            )[:2]
 
             # 2. Remove trips less than 10 minutes long.
             dfs = Preprocessor.replace_none_values_with_empty_dataframes(
@@ -69,7 +69,6 @@ class Preprocessor:
                 Preprocessor.calculate_paa(dfs)
             )
 
-
             # Prepare dictionary with results.
             preprocessed_data[token] = resampled_sensor_values
 
@@ -82,22 +81,43 @@ class Preprocessor:
 
         # Dump data to file, if requested.
         if filename is not None:
-            data_dir = DatasetDownloader.get_data_dir()
-            preprocessed_path = os.path.join(data_dir, "preprocessed")
-            # make sure the directory exists
-            DatasetDownloader.setup_directory(preprocessed_path)
-            full_path = os.path.join(preprocessed_path, filename)
-            with open(full_path, "wb") as file:
-                file.write(pickle.dumps(preprocessed_data))
-
-            trips_cut_per_30_sec_path = full_path[:-4] + "_total.csv"
-            trips_cut_per_30_sec.to_csv(trips_cut_per_30_sec_path, sep=";", index=False)
-
-            if distance_metric is not None:
-                distance_matrix_n2_path = full_path[:-4] + "_" + distance_metric + ".csv"
-                distance_matrix_n2.to_csv(distance_matrix_n2_path, sep=";", index=False)
+            Preprocessor.persist_results(
+                filename=filename,
+                preprocessed_data=preprocessed_data,
+                trips_cut_per_30_sec=trips_cut_per_30_sec,
+                distance_metric=distance_metric,
+                distance_matrix_n2=distance_matrix_n2
+            )
 
         return preprocessed_data
+
+    @staticmethod
+    def persist_results(filename: str, preprocessed_data: dict, trips_cut_per_30_sec: pd.DataFrame,
+                        distance_metric: str, distance_matrix_n2: pd.DataFrame):
+        """
+        Stores preprocessing results on disk.
+        :param filename:
+        :param preprocessed_data:
+        :param trips_cut_per_30_sec:
+        :param distance_metric:
+        :param distance_matrix_n2:
+        :return:
+        """
+
+        data_dir = DatasetDownloader.get_data_dir()
+        preprocessed_path = os.path.join(data_dir, "preprocessed")
+        # make sure the directory exists
+        DatasetDownloader.setup_directory(preprocessed_path)
+        full_path = os.path.join(preprocessed_path, filename)
+        with open(full_path, "wb") as file:
+            file.write(pickle.dumps(preprocessed_data))
+
+        trips_cut_per_30_sec_path = full_path[:-4] + "_total.csv"
+        trips_cut_per_30_sec.to_csv(trips_cut_per_30_sec_path, sep=";", index=False)
+
+        if distance_metric is not None:
+            distance_matrix_n2_path = full_path[:-4] + "_" + distance_metric + ".csv"
+            distance_matrix_n2.to_csv(distance_matrix_n2_path, sep=";", index=False)
 
     @staticmethod
     def replace_none_values_with_empty_dataframes(dataframe_dicts: list):
@@ -189,6 +209,7 @@ class Preprocessor:
                 "euclidean" : calculates the euclidean distance
                 "cityblock" : calculates the manhattan distance
                 "cosine"    : calculates the cosine distance
+                "dtw"       : Calculates distance with dynamic time warping. Utilizes l1 norm.
             for a full list of all distances see:
             https://docs.scipy.org/doc/scipy/reference/generated/scipy.spatial.distance.cdist.html
 
@@ -213,14 +234,40 @@ class Preprocessor:
         column_names = ["distance_"+str(i) for i in range(nr_of_rows)]
         result = pd.DataFrame(columns=column_names)
 
+        distance_matrix = \
+            cdist(small_df, small_df, metric=metric) if metric != 'dtw' \
+            else Preprocessor._calculate_distance_with_dtw(small_df, 1)
 
-        distance_matrix = cdist(small_df, small_df, metric=metric)
-        result = pd.concat([result,pd.DataFrame(distance_matrix,columns=column_names)])
+        result = pd.concat([result, pd.DataFrame(distance_matrix, columns=column_names)])
 
         # Reappend the categorical columns
         for colname in categorical_colnames:
             result[colname] = data[colname]
         return result
+
+    @staticmethod
+    def _calculate_distance_with_dtw(data, norm: int = 1):
+        """
+        Calculates metric for specified dataframe using dynamic time warping utilizing norm.
+        :param data:
+        :param norm: Defines which L-norm is to be used.
+        :return result: A 2D-nd-array containing distance from each segment to each other segment (same as with scipy's
+        cdist() - zeros(shape, dtype=float, order='C'))
+        """
+
+        # Initialize empty distance matrix.
+        dist_matrix = np.zeros((data.shape[0], data.shape[0]), dtype=float)
+
+        # Calculate distance with fastDTW between each pairing of segments. Distances between elements to themselves
+        # are ignored and hence retain their intial value of 0.
+        for i in range(0, data.shape[0]):
+            for j in range(i, data.shape[0]):
+                dist_matrix[i, j], path = fastdtw(data.iloc[i].values, data.iloc[j].values, dist=norm)
+                dist_matrix[j, i] = dist_matrix[i, j]
+
+        print(dist_matrix)
+
+        return dist_matrix
 
     @staticmethod
     def _cut_trip(sensor_data, snippet_length=30, column_names=None):
@@ -364,18 +411,21 @@ class Preprocessor:
         :return: List of cleaned/cut dataframes.
         """
 
-        scripted_trips = {"TRAM": 0, "METRO": 0, "WALK": 0}
+        trips = {"scripted": {"TRAM": 0, "METRO": 0, "WALK": 0}, "unscripted": {"TRAM": 0, "METRO": 0, "WALK": 0}}
         for i, df in enumerate(dataframes):
             # Assuming "notes" only has one entry per trip and scripted trips' notes contain the word "scripted",
             # while ordinary trips' notes don't.
             if "scripted" in str(df["annotation"]["notes"][0]).lower():
-                scripted_trips[df["annotation"]["mode"][0]] += 1
+                trips["scripted"][df["annotation"]["mode"][0]] += 1
                 for dataframe_name in list_of_dataframe_names_to_cut:
                     # Cut off time series data.
                     dataframes[i][dataframe_name] = Preprocessor._cut_off_start_and_end_in_dataframe(
                         dataframe=df[dataframe_name], cutoff_in_seconds=cutoff_in_seconds
                     )
-        print(scripted_trips)
+            else:
+                trips["unscripted"][df["annotation"]["mode"][0]] += 1
+
+        print(trips)
         return dataframes
 
     @staticmethod
@@ -952,11 +1002,12 @@ class Preprocessor:
         df['time'] = [int(i) for i in df['time']]
         return df
 
-    @staticmethod
-    def plot_paa(sensor_data, w_size=5, seconds=2):
-
-
-        plot_paa(feature, window_size=w_size,output_size=None,overlapping=False,marker='o')
+    # Note by rmitsch: Commented out since variable 'feature' is not defined. To remove?
+    # @staticmethod
+    # def plot_paa(sensor_data, w_size=5, seconds=2):
+    #
+    #
+    #     plot_paa(feature, window_size=w_size,output_size=None,overlapping=False,marker='o')
 
     @staticmethod
     def print_start_and_end_of_recording_per_sensor(df):
