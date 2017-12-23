@@ -66,6 +66,7 @@ class Preprocessor:
                     dataframes=dfs, list_of_dataframe_names_to_cut=["sensor", "location"], cutoff_in_seconds=30
                 )
             )
+            exit()
 
             # 4. Perform PAA.
             resampled_sensor_values = Preprocessor.replace_none_values_with_empty_dataframes(
@@ -472,7 +473,7 @@ class Preprocessor:
             # before the last entry.
             dataframe = dataframe[
                 (dataframe["time"] >= lower_time_threshold + cutoff_in_seconds) &
-                (dataframe["time"] <= upper_time_threshold + cutoff_in_seconds)
+                (dataframe["time"] <= upper_time_threshold - cutoff_in_seconds)
             ]
 
             return dataframe
