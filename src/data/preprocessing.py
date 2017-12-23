@@ -401,7 +401,7 @@ class Preprocessor:
             # before the last entry.
             dataframe = dataframe[
                 (dataframe["time"] >= lower_time_threshold + cutoff_in_seconds) &
-                (dataframe["time"] <= upper_time_threshold + cutoff_in_seconds)
+                (dataframe["time"] <= upper_time_threshold - cutoff_in_seconds)
             ]
 
             return dataframe
