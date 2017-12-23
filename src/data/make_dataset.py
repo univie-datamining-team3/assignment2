@@ -43,7 +43,7 @@ def main():
         tokens = [os.environ.get(alias) for alias in ["KEY_RAPHAEL", "KEY_MORITZ", "KEY_LUKAS"]]
         dfs = Preprocessor.preprocess(tokens,
                                       filename="preprocessed_data.dat",
-                                      distance_metric='dtw')
+                                      distance_metric='euclidean')
 
         # Load dataframes from disk.
         # dfs = Preprocessor.restore_preprocessed_data_from_disk(filename="preprocessed_data.dat")
