@@ -66,7 +66,6 @@ class Preprocessor:
                     dataframes=dfs, list_of_dataframe_names_to_cut=["sensor", "location"], cutoff_in_seconds=30
                 )
             )
-            exit()
 
             # 4. Perform PAA.
             resampled_sensor_values = Preprocessor.replace_none_values_with_empty_dataframes(
@@ -447,7 +446,6 @@ class Preprocessor:
             else:
                 trips["unscripted"][df["annotation"]["mode"][0]] += 1
 
-        print(trips)
         return dataframes
 
     @staticmethod
