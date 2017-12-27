@@ -354,7 +354,6 @@ class Preprocessor:
             result += trips
         return result
 
-
     @staticmethod
     def restore_preprocessed_data_from_disk(filename: str):
         """

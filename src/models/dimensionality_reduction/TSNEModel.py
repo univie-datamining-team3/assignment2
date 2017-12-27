@@ -2,9 +2,6 @@ from sklearn.manifold import TSNE
 import numpy
 import coranking
 from coranking.metrics import trustworthiness, continuity, LCMC
-import sklearn.neighbors
-import sklearn.preprocessing
-from scipy.spatial import distance
 
 
 class TSNEModel:
@@ -17,19 +14,19 @@ class TSNEModel:
         'metric': ["braycurtis", "canberra", "chebyshev", "cityblock", "correlation", "cosine",
                    "dice", "euclidean", "hamming", "jaccard", "kulsinski", "mahalanobis",
                    "matching", "minkowski", "rogerstanimoto", "russellrao", "seuclidean",
-                   "sokalmichener", "sokalsneath", "sqeuclidean", "yule"],
-        'init_method': ["random", "PCA"]
+                   "sokalmichener", "sokalsneath", "sqeuclidean", "yule", "precomputed"],
+        'init_method': ["random", "pca"]
     }
 
     # Hardcode thresholds for parameter values. Categorical values are represented by indices.
     PARAMETER_RANGES = {
-        "n_components": (1, 5),
+        "n_components": (1, 3),
         "perplexity": (1, 100),
         "early_exaggeration": (1, 50),
         "learning_rate": (1, 2000),
-        "n_iter": (1, 10000),
+        "n_iter": (250, 10000),
         "min_grad_norm": (0.0000000001, 0.1),
-        "metric": (0, 20),
+        "metric": (0, 21),
         "init_method": (0, 1),
         "random_state": (1, 100),
         "angle": (0.1, 1)
