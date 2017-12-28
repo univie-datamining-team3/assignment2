@@ -23,15 +23,15 @@ class TSNEModel:
     # Hardcode thresholds for parameter values. Categorical values are represented by indices.
     PARAMETER_RANGES = {
         "n_components": (1, 3),
-        "perplexity": (1, 100),
+        "perplexity": (5, 50),
         "early_exaggeration": (1, 50),
-        "learning_rate": (1, 2000),
+        "learning_rate": (10, 1000),
         "n_iter": (250, 10000),
-        "min_grad_norm": (0.0000000001, 0.1),
+        "min_grad_norm": (0.0000001, 0.1),
         "metric": (0, 21),
         "init_method": (0, 1),
         "random_state": (1, 100),
-        "angle": (0.1, 1)
+        "angle": (0.1, 0.9)
     }
 
     def __init__(self,
