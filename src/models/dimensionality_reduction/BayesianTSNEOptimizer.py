@@ -5,6 +5,7 @@ import copy
 from data.download import DatasetDownloader
 import os
 import pickle
+import numpy
 
 
 class BayesianTSNEOptimizer:
@@ -12,14 +13,19 @@ class BayesianTSNEOptimizer:
     Wrapper class for Bayesian optmization of t-SNE models.
     """
 
-    def __init__(self, high_dim_data, parameters: dict):
+    def __init__(self, high_dim_data, cluster_memberships: numpy.ndarray, parameters: dict):
         """
         Initializes BO for t-SNE.
         :param high_dim_data:
+        :param cluster_memberships: List with cluster memberships per data point (e. g. transport mode).
         :param parameters: Set of parameters. If value for key is scalar, then the parameter is considered fixed. If
         it's a 2-tupel, the parameter will be varied inside the defined ranges.
         """
         self.high_dim_data = high_dim_data
+        self.cluster_memberships = cluster_memberships
+
+        if len(self.high_dim_data) != len(self.cluster_memberships):
+            raise ValueError('high_dim_data and cluster_memberships have to have equal length.')
 
         # Define dictionary holding fixed parameters.
         self.fixed_parameters = {}
@@ -158,17 +164,21 @@ class BayesianTSNEOptimizer:
         # 3. Calculate t-SNE model's quality and update database records.
         ################################
 
-        quality_measures = tsne_model.calculate_quality_measures(high_dim_data=self.high_dim_data)
+        quality_measures = tsne_model.calculate_quality_measures(
+            high_dim_data=self.high_dim_data,
+            cluster_memberships=self.cluster_memberships
+        )
 
         ################################
         # 5. Return model score.
         ################################
 
         return (
-            quality_measures["trustworthiness"] +
-            quality_measures["continuity"] +
-            quality_measures["lcmc"]
-        ) / 3.0
+            quality_measures["trustworthiness"] * 0.1 +
+            quality_measures["continuity"] * 0.1 +
+            quality_measures["lcmc"] * 0.1 +
+            (1 - quality_measures["entropy"])
+        )
 
     @staticmethod
     def generate_initial_parameter_sets(fixed_parameters, num_iter=10):
@@ -262,6 +272,11 @@ class BayesianTSNEOptimizer:
         :param result_dict2:
         :return: Merged dictionary.
         """
+
+        if result_dict1 is not None and result_dict2 is None:
+            return copy.deepcopy(result_dict1)
+        elif result_dict1 is None and result_dict2 is not None:
+            return copy.deepcopy(result_dict2)
 
         merged_result = copy.deepcopy(result_dict1)
 

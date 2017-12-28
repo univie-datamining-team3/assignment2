@@ -2,6 +2,8 @@ from sklearn.manifold import TSNE
 import numpy
 import coranking
 from coranking.metrics import trustworthiness, continuity, LCMC
+import hdbscan
+import scipy
 
 
 class TSNEModel:
@@ -96,10 +98,12 @@ class TSNEModel:
 
         return self.tsne_results
 
-    def calculate_quality_measures(self, high_dim_data):
+    def calculate_quality_measures(self, high_dim_data, cluster_memberships: numpy.ndarray):
         """
         Calculates quality measures for specified t-SNE result data.
         :param high_dim_data:
+        :param cluster_memberships: List of cluster memberships for each datapoint. Values of elements are irrelevant,
+        only (in-)equality of values is considered.
         :return:
         """
 
@@ -115,8 +119,28 @@ class TSNEModel:
         # 4. Calculate LCMC.
         lcmc = LCMC(coranking_matrix, min_k=99, max_k=100)
 
+        # 5. Calculate cluster entropy based on specified ground-truth cluster memberships.
+
+        # Fit HDBSCAN cluster model.
+        clusterer = hdbscan.HDBSCAN(min_cluster_size=50, gen_min_span_tree=True)
+        clusterer.fit(high_dim_data)
+
+        # Calculate entropy.
+        entropy = 0
+        for i in range(0, max(clusterer.labels_) + 1):
+            # Get metadata for all segments in this cluster.
+            cluster_members = cluster_memberships[clusterer.labels_ == i]
+
+            # Calculate intra-cluster entropy based on cluster membership (e. g. transport mode).
+            values, gt_cluster_counts_in_model_cluster = numpy.unique(cluster_members, return_counts=True)
+
+            # Calculate total (weighted by relative cluster size) entropy.
+            entropy += scipy.stats.entropy(gt_cluster_counts_in_model_cluster, base=2) * \
+                       numpy.sum(gt_cluster_counts_in_model_cluster) / high_dim_data.shape[0]
+
         return {
             "trustworthiness": float(trust[0]),
             "continuity": float(cont[0]),
-            "lcmc": float(lcmc[0])
+            "lcmc": float(lcmc[0]),
+            "entropy": float(entropy)
         }
