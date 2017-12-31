@@ -34,7 +34,7 @@ def main():
     if FLAGS.download:
         # Download data.
         logger.info('start downloading data into raw:')
-        DatasetDownloader.download_all()
+        #DatasetDownloader.download_all()
         logger.info('downloading was successfull')
 
     if FLAGS.preprocess:
@@ -43,11 +43,11 @@ def main():
         tokens = [os.environ.get(alias) for alias in ["KEY_RAPHAEL", "KEY_MORITZ", "KEY_LUKAS"]]
         dfs = Preprocessor.preprocess(tokens,
                                       filename="preprocessed_data.dat",
-                                      distance_metric='euclidean')
+                                      distance_metric=None)
 
         # Load dataframes from disk.
         # dfs = Preprocessor.restore_preprocessed_data_from_disk(filename="preprocessed_data.dat")
-
+#
         logger.info('preprocessing was successful')
 
 if __name__ == '__main__':
