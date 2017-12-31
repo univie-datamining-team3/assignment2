@@ -77,3 +77,6 @@ reports/maps/
 
 # Exclude nemo's .directory files.
 .directory
+
+# Exclude .html files for parallel coordinates.
+parcoords-basic.html
