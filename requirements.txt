@@ -18,3 +18,4 @@ pyts==0.5
 psutil==5.4.2
 hdbscan==0.8.11
 sobol-seq==0.1.2
+plotly==2.2.3
