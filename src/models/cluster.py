@@ -1,18 +1,14 @@
 from sklearn import metrics
 import pandas as pd
-import numpy as np
 from copy import deepcopy
 import os
 from data.download import DatasetDownloader
 from data.preprocessing import Preprocessor
 import time
-import psutil
 from sklearn.cluster import KMeans
 import plotly.offline as plotly_offline
 import plotly.graph_objs as go
-import matplotlib
 import matplotlib.pyplot as plt
-import colorlover as cl
 
 
 class Clustering:
@@ -142,7 +138,6 @@ class Clustering:
 
         # Plot data as small multiples with barcharts.
         performance_df.set_index("distance_metric", inplace=True)
-        print(performance_df)
 
         performance_df.drop(
             ["distance_metric_index",
