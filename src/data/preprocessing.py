@@ -10,8 +10,7 @@ from pyts.visualization import plot_paa
 from pyts.transformation import PAA
 import pickle
 from scipy.spatial.distance import cdist, squareform
-import time
-from .DTWThread import DTWThread
+from data.DTWThread import DTWThread
 import psutil
 
 
@@ -33,14 +32,60 @@ class Preprocessor:
     }
 
     @staticmethod
-    def preprocess(tokens, filename: str = None, distance_metric: str = "euclidean"):
+    def preprocess(tokens, filename: str = None, distance_metric: str = "euclidean", use_individual_columns: bool = False):
         """
         Executes all preprocessing steps.
         :param tokens: List with keys of tokens to preprocess.
         :param filename: Specifies name of file data should be dumped to. Not persisted to disk if specified value is
         None. Note that filename is relative; all files are stored in /data/preprocessed.
         :param distance_metric: Distance metric to apply for comparison between trip segments.
+        :param use_individual_columns: Defines whether individual columns (x, y, z) or the total (n2) value should be
+        used for distance calculation.
         :return: Dictionary with preprocessed data. Specified tokens are used as keys.
+        """
+
+        # 1. Preprocess data per token.
+        preprocessed_data = Preprocessor._preprocess_data_per_token(tokens=tokens)
+
+        # 2. Cut all trips in 30 second snippets
+        trips_cut_per_30_sec = Preprocessor.get_cut_trip_snippets_for_targets(
+            preprocessed_data,
+            snippet_length=30,
+            sensor_type="acceleration",
+            target_column_names=["total", "x", "y", "z"]
+        )
+
+        # 3. Apply distance metric and calculate distance matrix
+        distance_matrix = None
+        if distance_metric is not None:
+            if use_individual_columns:
+                distance_matrix = Preprocessor.calculate_distance_for_individual_columns(
+                        dataframes=trips_cut_per_30_sec[1:4]
+                )
+            else:
+                distance_matrix = Preprocessor.calculate_distance_for_n2(
+                    trips_cut_per_30_sec[0],
+                    metric=distance_metric
+                )
+
+        # 4. Dump data to file, if requested.
+        if filename is not None:
+            Preprocessor.persist_results(
+                filename=filename,
+                preprocessed_data=preprocessed_data,
+                trips_cut_per_30_sec=trips_cut_per_30_sec,
+                distance_metric=distance_metric,
+                distance_matrix_n2=distance_matrix
+            )
+
+        return preprocessed_data
+
+    @staticmethod
+    def _preprocess_data_per_token(tokens: list):
+        """
+        List of tokens whose data is to be processed.
+        :param tokens:
+        :return: Dictionary with preprocessed data per token.
         """
 
         preprocessed_data = {}
@@ -63,7 +108,7 @@ class Preprocessor:
             # 3. Cut first and last 30 seconds from scripted trips.
             dfs = Preprocessor.replace_none_values_with_empty_dataframes(
                 Preprocessor._cut_off_start_and_end_in_dataframes(
-                    dataframes=dfs, list_of_dataframe_names_to_cut=["sensor", "location"], cutoff_in_seconds=30
+                    dataframes=dfs, list_of_dataframe_names_to_cut=["sensor", "location"], cutoff_in_seconds=60
                 )
             )
 
@@ -75,28 +120,10 @@ class Preprocessor:
             # Prepare dictionary with results.
             preprocessed_data[token] = resampled_sensor_values
 
-        # 6. Cut all trips in 30 second snippets
-        trips_cut_per_30_sec = Preprocessor.get_cut_trip_snippets_for_total(preprocessed_data, snippet_length=30, sensor_type="acceleration")
-
-        # 7. Apply distance metric and calculate distance matrix
-        start = time.time()
-        if distance_metric is not None:
-            distance_matrix_n2 = Preprocessor.calculate_distance_for_n2(trips_cut_per_30_sec, metric=distance_metric)
-        print("duration for dist. calculation in min = ", (time.time() - start) / 60.0)
-        # Dump data to file, if requested.
-        if filename is not None:
-            Preprocessor.persist_results(
-                filename=filename,
-                preprocessed_data=preprocessed_data,
-                trips_cut_per_30_sec=trips_cut_per_30_sec,
-                distance_metric=distance_metric,
-                distance_matrix_n2=distance_matrix_n2
-            )
-
         return preprocessed_data
 
     @staticmethod
-    def persist_results(filename: str, preprocessed_data: dict, trips_cut_per_30_sec: pd.DataFrame,
+    def persist_results(filename: str, preprocessed_data: dict, trips_cut_per_30_sec: list,
                         distance_metric: str, distance_matrix_n2: pd.DataFrame):
         """
         Stores preprocessing results on disk.
@@ -116,8 +143,10 @@ class Preprocessor:
         with open(full_path, "wb") as file:
             file.write(pickle.dumps(preprocessed_data))
 
-        trips_cut_per_30_sec_path = full_path[:-4] + "_total.csv"
-        trips_cut_per_30_sec.to_csv(trips_cut_per_30_sec_path, sep=";", index=False)
+        trips_cut_per_30_sec[0].to_csv(full_path[:-4] + "_total.csv", sep=";", index=False)
+        trips_cut_per_30_sec[1].to_csv(full_path[:-4] + "_x.csv", sep=";", index=False)
+        trips_cut_per_30_sec[2].to_csv(full_path[:-4] + "_y.csv", sep=";", index=False)
+        trips_cut_per_30_sec[3].to_csv(full_path[:-4] + "_z.csv", sep=";", index=False)
 
         if distance_metric is not None:
             distance_matrix_n2_path = full_path[:-4] + "_" + distance_metric + ".csv"
@@ -143,12 +172,11 @@ class Preprocessor:
         ]
 
     @staticmethod
-    def get_cut_trip_snippets_for_total(dfs, snippet_length=30, sensor_type="acceleration"):
+    def get_cut_trip_snippets_for_targets(dfs, target_column_names: list, snippet_length=30, sensor_type="acceleration"):
         """
         This method gets a dictionary of trips per token and cuts them in the
-        specified snippet_length. It only uses the one dimensional "total" column
-        of the sensor table, this is in opposition to the calculation of the values
-        from the x,y,z parameters.
+        specified snippet_length. It uses the columns of the specified names
+        (i. e. one or several of: "total", "x", "y", "z") in the sensor table.
 
         Parameters
         ----------
@@ -159,6 +187,48 @@ class Preprocessor:
             specifies the length of the time snippets in seconds
         sensor_type: string, default="acceleration"
             specifies which sensor type should be used for each entry
+        target_column_names: list
+            Specifies which columns should represent trip observation.
+
+        Returns
+        -------
+        result: returns a list of pandas.DataFrames where each row is a snippet with length snippet_length
+                and each column is one recording step. Each entry corresponds
+                to the total aka n2 value of the original data. Additional columns are:
+                "mode","notes","scripted","token","trip_id", where scripted is a binary variable
+                where scripted=1 and ordinary=0. "trip_id" helps to identify which snippet, belongs
+                to which trip.
+                Each element in the list corresponds to one of the specified target columns (in the same sequence).
+        """
+
+        return [
+            Preprocessor.get_cut_trip_snippets_for_target(
+                dfs=dfs,
+                snippet_length=snippet_length,
+                sensor_type=sensor_type,
+                target_column_name=target_column
+            )
+            for target_column in target_column_names
+        ]
+
+    @staticmethod
+    def get_cut_trip_snippets_for_target(dfs, snippet_length=30, sensor_type="acceleration", target_column_name: str = "total"):
+        """
+        This method gets a dictionary of trips per token and cuts them in the
+        specified snippet_length. It uses the one dimensional column of the specified name
+        (i. e. one of: "total", "x", "y", "z") in the sensor table.
+
+        Parameters
+        ----------
+        dfs: dictionary with the assumed nested structure
+            dict[token] = list of trips per token and each trip consists of tables for
+            at least "annotation" and "sensor"
+        snippet_length: int, default=30,
+            specifies the length of the time snippets in seconds
+        sensor_type: string, default="acceleration"
+            specifies which sensor type should be used for each entry
+        target_column_name: string, default="total"
+                    Specifies which column should represent trip observation.
 
         Returns
         -------
@@ -178,7 +248,12 @@ class Preprocessor:
         for token_i, trips in sorted(dfs.items()):
             for trip_i in trips:
                 sensor_data, mode, notes, scripted = Preprocessor._get_row_entries_for_trip(trip_i, sensor_type=sensor_type)
-                splitted_trip = Preprocessor._cut_trip(sensor_data, snippet_length, column_names)
+                splitted_trip = Preprocessor._cut_trip(
+                    sensor_data=sensor_data,
+                    target_column_name=target_column_name,
+                    snippet_length=snippet_length,
+                    column_names=column_names
+                )
                 splitted_trip["mode"]=mode
                 if str(notes).lower() == "nan":
                     splitted_trip["notes"]="empty"
@@ -231,6 +306,7 @@ class Preprocessor:
         """
         categorical_colnames=["mode","notes","scripted","token", "trip_id"]
         small_df = data.drop(categorical_colnames, axis=1)
+
         #column_names = list(small_df.columns.values)
         nr_of_rows =  small_df.shape[0]
         nr_of_columns = small_df.shape[1]
@@ -247,6 +323,62 @@ class Preprocessor:
         # Reappend the categorical columns
         for colname in categorical_colnames:
             result[colname] = data[colname]
+        return result
+
+    @staticmethod
+    def calculate_distance_for_individual_columns(dataframes: list):
+        """
+        This method calculates the specified distance metric for the individual x, y, z columns.
+        Note that due to the data structure required for calculating distances between the individual columns currently
+        only the Euclidean norm is supported, since I haven't found a way to concile scipy's cdist-function with the
+        additional dimension (individual columns) in the dataset.
+
+        Parameters
+        ----------
+        dataframes: List of pandas.DataFrame of the trip segments and the
+              ["mode","notes","scripted","token", "trip_id"] columns with length 3 - has to contain dataframe
+              for columns "x", "y" and "z".
+        Returns
+        -------
+        result: returns a pandas.DataFrame where each each point in the distance matrix
+                is the distance of one trip segment to another one and each row of the
+                distance matrix corresponds to the trips segment distances to all other
+                trip segments.  Additional columns are: "mode","notes","scripted","token",
+                where scripted is a binary variable where scripted=1 and ordinary=0
+                Note that the dimensionality of the result can be (for most cases)
+                different to the dimensionality of the incoming data pandas.DataFrame.
+
+        """
+        categorical_colnames=["mode","notes","scripted","token", "trip_id"]
+
+        # Drop categorical column names for all dataframes.
+        small_dfs = [data.drop(categorical_colnames, axis=1) for data in dataframes]
+
+        # The new dataframe has dimensionality of nr_of_rows x nr_of_rows
+        nr_of_rows = small_dfs[0].shape[0]
+        column_names = ["distance_" + str(i) for i in range(nr_of_rows)]
+        result = pd.DataFrame(columns=column_names)
+
+        # Calculating distance matrix manually, since cdist(...) doesn't take 3D-arrays and I don't know how to solve
+        # this more elegantly.
+        distance_matrix = np.zeros([nr_of_rows, nr_of_rows])
+        for i in range(0, nr_of_rows):
+            for j in range(i + 1, nr_of_rows):
+                distance_matrix[i, j] = np.sqrt(
+                    (
+                        (small_dfs[0].iloc[i] - small_dfs[0].iloc[j]) ** 2 +
+                        (small_dfs[1].iloc[i] - small_dfs[1].iloc[j]) ** 2 +
+                        (small_dfs[2].iloc[i] - small_dfs[2].iloc[j]) ** 2
+                    ).sum()
+                )
+                distance_matrix[j, i] = distance_matrix[i, j]
+
+        result = pd.concat([result, pd.DataFrame(distance_matrix, columns=column_names)])
+
+        # Reappend the categorical columns
+        for colname in categorical_colnames:
+            result[colname] = dataframes[0][colname]
+
         return result
 
     @staticmethod
@@ -280,7 +412,7 @@ class Preprocessor:
                                segment_pairings=segment_pairings,
                                distance_matrix=dist_matrix,
                                data_to_process=data,
-                               norm=2)
+                               norm=norm)
             threads.append(thread)
             thread.start()
 
@@ -291,11 +423,12 @@ class Preprocessor:
         return dist_matrix
 
     @staticmethod
-    def _cut_trip(sensor_data, snippet_length=30, column_names=None):
+    def _cut_trip(sensor_data, target_column_name: str, snippet_length=30, column_names=None):
         """
         Helper function to cut one trip into segments of snippet_length
         and return the new pandas.DataFrame that includes the "total"
         of each value.
+        :param target_column_name: Name of column to use as observation in trip (i. e. one of: "total", "x", "y", "z").
         """
         HERTZ_RATE = 20
         nr_of_trip_columns = HERTZ_RATE * snippet_length
@@ -315,7 +448,7 @@ class Preprocessor:
 
         for row_index in range(nr_of_rows):
             to_index = start_index + nr_of_trip_columns
-            row_i = copied_sensor_data.loc[start_index:to_index-1,"total"]
+            row_i = copied_sensor_data.loc[start_index:to_index-1, target_column_name]
             result.loc[row_index,:] = list(row_i)
             start_index = to_index
 
@@ -343,14 +476,22 @@ class Preprocessor:
         return sensor_data, mode, notes, scripted
 
     @staticmethod
-    def unpack_all_trips(dfs: dict):
+    def unpack_all_trips(dfs: dict, keep_tokens=False):
         """
         Helper method that takes a dictionary of the trips per token and returns a list
         of all trips. Assumed nested structure is:
         dict[token] = list of trips per token
+        :param keep_tokens: bool, default=False,
+                    if True, the token is appended to the annotation dataframe.
+                    This makes it easier to identify the trips later.
         """
         result = []
-        for token, trips in sorted(dfs.items()):
+        dfs_copy = deepcopy(dfs)
+        for token, trips in sorted(dfs_copy.items()):
+            if keep_tokens:
+                for trip_i in trips:
+                    if trip_i["annotation"] is not None:
+                        trip_i["annotation"]["token"]=token
             result += trips
         return result
 
@@ -759,7 +900,7 @@ class Preprocessor:
         result : pandas DataFrame
             a pandas dataframe with the summaries for each trip
         """
-        nr_of_recorded_trips_token = len(all_trips)
+        nr_of_recorded_trips = len(all_trips)
         result = pd.DataFrame()
         if convert_time:
             all_trips_copy = Preprocessor.convert_timestamps(all_trips)
@@ -767,7 +908,7 @@ class Preprocessor:
             all_trips_copy = all_trips
         start_times = []
         end_times = []
-        for index in range(0, nr_of_recorded_trips_token):
+        for index in range(0, nr_of_recorded_trips):
             trip_i = all_trips_copy[index]
             if ("annotation" in trip_i.keys()) and (not trip_i["annotation"].empty):
                 result = pd.concat([result, trip_i["annotation"]])
