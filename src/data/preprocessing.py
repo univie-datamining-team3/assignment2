@@ -9,6 +9,9 @@ from scipy.interpolate import interp1d
 from pyts.visualization import plot_paa
 from pyts.transformation import PAA
 import pickle
+from scipy.spatial.distance import cdist, squareform
+from .DTWThread import DTWThread
+import psutil
 
 
 class Preprocessor:
@@ -16,61 +19,474 @@ class Preprocessor:
     Class for preprocessing routines on the mobility data set.
     """
 
+    # Names of columns in all dataframes. Used to inject columns into empty dataframes.
+    DATAFRAME_COLUMN_NAMES = {
+        "cell": ['time', 'cid', 'lac', 'asu'],
+        "annotation": ['time', 'mode', 'notes'],
+        "location": ['time', 'gpstime', 'provider', 'longitude', 'latitude', 'altitude', 'speed', 'bearing',
+                     'accuracy'],
+        "sensor": ['sensor', 'time', 'x', 'y', 'z', 'total'],
+        "mac": ['time', 'ssid', 'level'],
+        "marker": ['time', 'marker'],
+        "event": ['time', 'event', 'state']
+    }
+
     @staticmethod
-    def preprocess(tokens, filename: str = None):
+    def preprocess(tokens, filename: str = None, distance_metric: str = "euclidean", use_individual_columns: bool = False):
         """
         Executes all preprocessing steps.
         :param tokens: List with keys of tokens to preprocess.
         :param filename: Specifies name of file data should be dumped to. Not persisted to disk if specified value is
         None. Note that filename is relative; all files are stored in /data/preprocessed.
+        :param distance_metric: Distance metric to apply for comparison between trip segments.
+        :param use_individual_columns: Defines whether individual columns (x, y, z) or the total (n2) value should be
+        used for distance calculation.
         :return: Dictionary with preprocessed data. Specified tokens are used as keys.
+        """
+
+        # 1. Preprocess data per token.
+        preprocessed_data = Preprocessor._preprocess_data_per_token(tokens=tokens)
+
+        # 2. Cut all trips in 30 second snippets
+        trips_cut_per_30_sec = Preprocessor.get_cut_trip_snippets_for_targets(
+            preprocessed_data,
+            snippet_length=30,
+            sensor_type="acceleration",
+            target_column_names=["total", "x", "y", "z"]
+        )
+
+        # 3. Apply distance metric and calculate distance matrix
+        distance_matrix = None
+        if distance_metric is not None:
+            if use_individual_columns:
+                distance_matrix = Preprocessor.calculate_distance_for_individual_columns(
+                        dataframes=trips_cut_per_30_sec[1:4]
+                )
+            else:
+                distance_matrix = Preprocessor.calculate_distance_for_n2(
+                    trips_cut_per_30_sec[0],
+                    metric=distance_metric
+                )
+
+        # 4. Dump data to file, if requested.
+        if filename is not None:
+            Preprocessor.persist_results(
+                filename=filename,
+                preprocessed_data=preprocessed_data,
+                trips_cut_per_30_sec=trips_cut_per_30_sec,
+                distance_metric=distance_metric,
+                distance_matrix_n2=distance_matrix
+            )
+
+        return preprocessed_data
+
+    @staticmethod
+    def _preprocess_data_per_token(tokens: list):
+        """
+        List of tokens whose data is to be processed.
+        :param tokens:
+        :return: Dictionary with preprocessed data per token.
         """
 
         preprocessed_data = {}
 
         for token in tokens:
             # 1. Get travel data per token, remove dataframes without annotations.
-            dfs = Preprocessor._remove_dataframes_without_annotation(
-                Preprocessor.get_data_per_token(token)
+            dfs = Preprocessor.replace_none_values_with_empty_dataframes(
+                # Drop dataframes w/o annotations.
+                Preprocessor._remove_dataframes_without_annotation(
+                    # Get travel data per token.
+                    Preprocessor.get_data_per_token(token)
+                )
             )
 
             # 2. Remove trips less than 10 minutes long.
-            dfs = Preprocessor._remove_dataframes_by_duration_limit(dfs, 10 * 60)
-
-            # 3. Cut first and last 30 seconds from scripted trips.
-            dfs = Preprocessor._cut_off_start_and_end_in_dataframes(
-                dataframes=dfs, list_of_dataframe_names_to_cut=["sensor", "location"], cutoff_in_seconds=30
+            dfs = Preprocessor.replace_none_values_with_empty_dataframes(
+                Preprocessor._remove_dataframes_by_duration_limit(dfs, 10 * 60)
             )
 
-            # 4.Convert timestamps to human readable format
-            dfs = Preprocessor.convert_timestamps(dfs, unit="ms")
+            # 3. Cut first and last 30 seconds from scripted trips.
+            dfs = Preprocessor.replace_none_values_with_empty_dataframes(
+                Preprocessor._cut_off_start_and_end_in_dataframes(
+                    dataframes=dfs, list_of_dataframe_names_to_cut=["sensor", "location"], cutoff_in_seconds=30
+                )
+            )
 
-            # 5. Perform paa
-            resampled_sensor_values = Preprocessor.calculate_paa(dfs)
-
-            # 5. Resample time series.
-            #resampled_sensor_values = Preprocessor._resample_trip_time_series(dfs)
-
-            # 6. Drop nan values:
-            #drop_almost_all_nans_ratio = 0.001
-            #resampled_sensor_values = Preprocessor._filter_nan_values(resampled_sensor_values,  properties_to_check=["total"],
-            #                                                          allowed_nan_ratio=drop_almost_all_nans_ratio)
-
-            # 7. Recalculate 2-norm for accerelometer data.
-            #resampled_sensor_values = Preprocessor._recalculate_accerelometer_2norm(resampled_sensor_values)
-
+            # 4. Perform PAA.
+            resampled_sensor_values = Preprocessor.replace_none_values_with_empty_dataframes(
+                Preprocessor.calculate_paa(dfs)
+            )
 
             # Prepare dictionary with results.
-            preprocessed_data[token] = {}
-            preprocessed_data[token]["trips"] = dfs
-            preprocessed_data[token]["resampled_sensor_data"] = resampled_sensor_values
-
-            # Dump data to file, if requested.
-            if filename is not None:
-                with open("../../data/" + filename, "wb") as file:
-                    file.write(pickle.dumps(preprocessed_data))
+            preprocessed_data[token] = resampled_sensor_values
 
         return preprocessed_data
+
+    @staticmethod
+    def persist_results(filename: str, preprocessed_data: dict, trips_cut_per_30_sec: list,
+                        distance_metric: str, distance_matrix_n2: pd.DataFrame):
+        """
+        Stores preprocessing results on disk.
+        :param filename:
+        :param preprocessed_data:
+        :param trips_cut_per_30_sec:
+        :param distance_metric:
+        :param distance_matrix_n2:
+        :return:
+        """
+
+        data_dir = DatasetDownloader.get_data_dir()
+        preprocessed_path = os.path.join(data_dir, "preprocessed")
+        # make sure the directory exists
+        DatasetDownloader.setup_directory(preprocessed_path)
+        full_path = os.path.join(preprocessed_path, filename)
+        with open(full_path, "wb") as file:
+            file.write(pickle.dumps(preprocessed_data))
+
+        trips_cut_per_30_sec[0].to_csv(full_path[:-4] + "_total.csv", sep=";", index=False)
+        trips_cut_per_30_sec[1].to_csv(full_path[:-4] + "_x.csv", sep=";", index=False)
+        trips_cut_per_30_sec[2].to_csv(full_path[:-4] + "_y.csv", sep=";", index=False)
+        trips_cut_per_30_sec[3].to_csv(full_path[:-4] + "_z.csv", sep=";", index=False)
+
+        if distance_metric is not None:
+            distance_matrix_n2_path = full_path[:-4] + "_" + distance_metric + ".csv"
+            distance_matrix_n2.to_csv(distance_matrix_n2_path, sep=";", index=False)
+
+    @staticmethod
+    def replace_none_values_with_empty_dataframes(dataframe_dicts: list):
+        """
+        Checks every dictionary in every dictionary in specified list for None values, replaces them with empty data-
+        frames.
+        :param dataframe_dicts: List of dictionaries containing one dataframe for each key.
+        :return: List in same format with Nones replaced by empty dataframes.
+        """
+
+        # For every key in every dictionary in list: Create new dictionary with Nones replaced by empty dataframes;
+        # concatenate new dictionaries to list.
+        return [
+            {
+                key: pd.DataFrame(columns=Preprocessor.DATAFRAME_COLUMN_NAMES[key])
+                if df_dict[key] is None else df_dict[key]
+                for key in df_dict
+            } for df_dict in dataframe_dicts
+        ]
+
+    @staticmethod
+    def get_cut_trip_snippets_for_targets(dfs, target_column_names: list, snippet_length=30, sensor_type="acceleration"):
+        """
+        This method gets a dictionary of trips per token and cuts them in the
+        specified snippet_length. It uses the columns of the specified names
+        (i. e. one or several of: "total", "x", "y", "z") in the sensor table.
+
+        Parameters
+        ----------
+        dfs: dictionary with the assumed nested structure
+            dict[token] = list of trips per token and each trip consists of tables for
+            at least "annotation" and "sensor"
+        snippet_length: int, default=30,
+            specifies the length of the time snippets in seconds
+        sensor_type: string, default="acceleration"
+            specifies which sensor type should be used for each entry
+        target_column_names: list
+            Specifies which columns should represent trip observation.
+
+        Returns
+        -------
+        result: returns a list of pandas.DataFrames where each row is a snippet with length snippet_length
+                and each column is one recording step. Each entry corresponds
+                to the total aka n2 value of the original data. Additional columns are:
+                "mode","notes","scripted","token","trip_id", where scripted is a binary variable
+                where scripted=1 and ordinary=0. "trip_id" helps to identify which snippet, belongs
+                to which trip.
+                Each element in the list corresponds to one of the specified target columns (in the same sequence).
+        """
+
+        return [
+            Preprocessor.get_cut_trip_snippets_for_target(
+                dfs=dfs,
+                snippet_length=snippet_length,
+                sensor_type=sensor_type,
+                target_column_name=target_column
+            )
+            for target_column in target_column_names
+        ]
+
+    @staticmethod
+    def get_cut_trip_snippets_for_target(dfs, snippet_length=30, sensor_type="acceleration", target_column_name: str = "total"):
+        """
+        This method gets a dictionary of trips per token and cuts them in the
+        specified snippet_length. It uses the one dimensional column of the specified name
+        (i. e. one of: "total", "x", "y", "z") in the sensor table.
+
+        Parameters
+        ----------
+        dfs: dictionary with the assumed nested structure
+            dict[token] = list of trips per token and each trip consists of tables for
+            at least "annotation" and "sensor"
+        snippet_length: int, default=30,
+            specifies the length of the time snippets in seconds
+        sensor_type: string, default="acceleration"
+            specifies which sensor type should be used for each entry
+        target_column_name: string, default="total"
+                    Specifies which column should represent trip observation.
+
+        Returns
+        -------
+        result: returns a pandas.DataFrame where each row is a snippet with length snippet_length
+                and each column is one recording step. Each entry corresponds
+                to the total aka n2 value of the original data. Additional columns are:
+                "mode","notes","scripted","token","trip_id", where scripted is a binary variable
+                where scripted=1 and ordinary=0. "trip_id" helps to identify which snippet, belongs
+                to which trip.
+        """
+        HERTZ_RATE = 20
+        column_names = ["snippet_"+str(i) for i in range(snippet_length * HERTZ_RATE)]
+        column_names = column_names + ["mode","notes","scripted","token", "trip_id"]
+
+        result = pd.DataFrame(columns=column_names)
+        trip_index = 0
+        for token_i, trips in sorted(dfs.items()):
+            for trip_i in trips:
+                sensor_data, mode, notes, scripted = Preprocessor._get_row_entries_for_trip(trip_i, sensor_type=sensor_type)
+                splitted_trip = Preprocessor._cut_trip(
+                    sensor_data=sensor_data,
+                    target_column_name=target_column_name,
+                    snippet_length=snippet_length,
+                    column_names=column_names
+                )
+                splitted_trip["mode"]=mode
+                if str(notes).lower() == "nan":
+                    splitted_trip["notes"]="empty"
+                else:
+                    splitted_trip["notes"]=notes
+                splitted_trip["scripted"]=scripted
+                splitted_trip["token"]=token_i
+                splitted_trip["trip_id"]=trip_index
+                trip_index += 1
+                result = pd.concat([result, splitted_trip])
+
+        result.reset_index(drop=True, inplace=True)
+
+        return result
+
+    @staticmethod
+    def calculate_distance_for_n2(data, metric="euclidean"):
+        """
+        This method calculates the specified distance metric for norms of the x,y,z signal,
+        also called n2 or total in the assignment.
+
+        Parameters
+        ----------
+        data: pandas.DataFrame of the trip segments and the
+              ["mode","notes","scripted","token", "trip_id"] columns
+        metric: string, default="euclidean",
+            specifies which distance metric method should be used. The distance is calculated
+            with the highly optimized cdist function of scipy.spatial.distance.
+            This makes it simple to use a wide variety of distance metrics, some
+            of them listed below.
+            Mandatory Distance Calculations:
+                "euclidean" : calculates the euclidean distance
+                "cityblock" : calculates the manhattan distance
+                "cosine"    : calculates the cosine distance
+                "dtw"       : Calculates distance with dynamic time warping. Utilizes l1 norm.
+            for a full list of all distances see:
+            https://docs.scipy.org/doc/scipy/reference/generated/scipy.spatial.distance.cdist.html
+
+
+        Returns
+        -------
+        result: returns a pandas.DataFrame where each each point in the distance matrix
+                is the distance of one trip segment to another one and each row of the
+                distance matrix corresponds to the trips segment distances to all other
+                trip segments.  Additional columns are: "mode","notes","scripted","token",
+                where scripted is a binary variable where scripted=1 and ordinary=0
+                Note that the dimensionality of the result can be (for most cases)
+                different to the dimensionality of the incoming data pandas.DataFrame.
+
+        """
+        categorical_colnames=["mode","notes","scripted","token", "trip_id"]
+        small_df = data.drop(categorical_colnames, axis=1)
+
+        #column_names = list(small_df.columns.values)
+        nr_of_rows =  small_df.shape[0]
+        nr_of_columns = small_df.shape[1]
+        # The new dataframe has dimensionality of nr_of_rows x nr_of_rows
+        column_names = ["distance_"+str(i) for i in range(nr_of_rows)]
+        result = pd.DataFrame(columns=column_names)
+
+        distance_matrix = \
+            cdist(small_df, small_df, metric=metric) if metric != 'dtw' \
+            else Preprocessor._calculate_distance_with_dtw(small_df, 1)
+
+        result = pd.concat([result, pd.DataFrame(distance_matrix, columns=column_names)])
+
+        # Reappend the categorical columns
+        for colname in categorical_colnames:
+            result[colname] = data[colname]
+        return result
+
+    @staticmethod
+    def calculate_distance_for_individual_columns(dataframes: list):
+        """
+        This method calculates the specified distance metric for the individual x, y, z columns.
+        Note that due to the data structure required for calculating distances between the individual columns currently
+        only the Euclidean norm is supported, since I haven't found a way to concile scipy's cdist-function with the
+        additional dimension (individual columns) in the dataset.
+
+        Parameters
+        ----------
+        dataframes: List of pandas.DataFrame of the trip segments and the
+              ["mode","notes","scripted","token", "trip_id"] columns with length 3 - has to contain dataframe
+              for columns "x", "y" and "z".
+        Returns
+        -------
+        result: returns a pandas.DataFrame where each each point in the distance matrix
+                is the distance of one trip segment to another one and each row of the
+                distance matrix corresponds to the trips segment distances to all other
+                trip segments.  Additional columns are: "mode","notes","scripted","token",
+                where scripted is a binary variable where scripted=1 and ordinary=0
+                Note that the dimensionality of the result can be (for most cases)
+                different to the dimensionality of the incoming data pandas.DataFrame.
+
+        """
+        categorical_colnames=["mode","notes","scripted","token", "trip_id"]
+
+        # Drop categorical column names for all dataframes.
+        small_dfs = [data.drop(categorical_colnames, axis=1) for data in dataframes]
+
+        # The new dataframe has dimensionality of nr_of_rows x nr_of_rows
+        nr_of_rows = small_dfs[0].shape[0]
+        column_names = ["distance_" + str(i) for i in range(nr_of_rows)]
+        result = pd.DataFrame(columns=column_names)
+
+        # Calculating distance matrix manually, since cdist(...) doesn't take 3D-arrays and I don't know how to solve
+        # this more elegantly.
+        distance_matrix = np.zeros([nr_of_rows, nr_of_rows])
+        for i in range(0, nr_of_rows):
+            for j in range(i + 1, nr_of_rows):
+                distance_matrix[i, j] = np.sqrt(
+                    (
+                        (small_dfs[0].iloc[i] - small_dfs[0].iloc[j]) ** 2 +
+                        (small_dfs[1].iloc[i] - small_dfs[1].iloc[j]) ** 2 +
+                        (small_dfs[2].iloc[i] - small_dfs[2].iloc[j]) ** 2
+                    ).sum()
+                )
+                distance_matrix[j, i] = distance_matrix[i, j]
+
+        result = pd.concat([result, pd.DataFrame(distance_matrix, columns=column_names)])
+
+        # Reappend the categorical columns
+        for colname in categorical_colnames:
+            result[colname] = dataframes[0][colname]
+
+        return result
+
+    @staticmethod
+    def _calculate_distance_with_dtw(data, norm: int = 1):
+        """
+        Calculates metric for specified dataframe using dynamic time warping utilizing norm.
+        :param data:
+        :param norm: Defines which L-norm is to be used.
+        :return result: A 2D-nd-array containing distance from each segment to each other segment (same as with scipy's
+        cdist() - zeros(shape, dtype=float, order='C'))
+        """
+
+        # Initialize empty distance matrix.
+        dist_matrix = np.zeros((data.shape[0], data.shape[0]), dtype=float)
+
+        # Note regarding multithreading: Splitting up by rows leads to imbalance amongst thread workloads.
+        # Instead, we split up all possible pairings to ensure even workloads and collect the results (and assemble
+        # the distance matrix) after the threads finished their calculations.
+        # Generate all pairings.
+        segment_pairings = [(i, j) for i in range(0, data.shape[0]) for j in range(0, data.shape[0]) if j > i]
+
+        # Set up multithreading. Run as many threads as logical cores are available on this machine - 1.
+        num_threads = psutil.cpu_count(logical=True)
+
+        threads = []
+        for i in range(0, num_threads):
+            # Calculate distance with fastDTW between each pairing of segments. Distances between elements to themselves
+            # are ignored and hence retain their intial value of 0.
+            thread = DTWThread(thread_id=i,
+                               num_threads=num_threads,
+                               segment_pairings=segment_pairings,
+                               distance_matrix=dist_matrix,
+                               data_to_process=data,
+                               norm=norm)
+            threads.append(thread)
+            thread.start()
+
+        # Wait for threads to finish.
+        for thread in threads:
+            thread.join()
+
+        return dist_matrix
+
+    @staticmethod
+    def _cut_trip(sensor_data, target_column_name: str, snippet_length=30, column_names=None):
+        """
+        Helper function to cut one trip into segments of snippet_length
+        and return the new pandas.DataFrame that includes the "total"
+        of each value.
+        :param target_column_name: Name of column to use as observation in trip (i. e. one of: "total", "x", "y", "z").
+        """
+        HERTZ_RATE = 20
+        nr_of_trip_columns = HERTZ_RATE * snippet_length
+        categorical_colnames = ["mode","notes","scripted","token", "trip_id"]
+        if column_names is None:
+            column_names = ["snippet_"+str(i) for i in range(nr_of_trip_columns)]
+            column_names = column_names + categorical_colnames
+
+        result = pd.DataFrame(columns=column_names).drop(categorical_colnames, axis=1)
+        copied_sensor_data = sensor_data.reset_index(drop=True)
+        copied_sensor_data = copied_sensor_data
+        end_index = copied_sensor_data.index[-1]
+        # // floor division syntax
+        # the last segment wich is smaller than 30 seconds will be dropped
+        nr_of_rows = end_index // nr_of_trip_columns
+        start_index = 0
+
+        for row_index in range(nr_of_rows):
+            to_index = start_index + nr_of_trip_columns
+            row_i = copied_sensor_data.loc[start_index:to_index-1, target_column_name]
+            result.loc[row_index,:] = list(row_i)
+            start_index = to_index
+
+        return result
+
+    @staticmethod
+    def _get_row_entries_for_trip(trip,  sensor_type="acceleration"):
+        """
+        Helper function which splits on trip into the four parts
+        sensor_data, mode, notes and scripted, where scripted is
+        a binary variable where scripted=1 and ordinary=0
+        """
+        sensor_data, mode, notes, scripted = None, None, None, None
+        for table_name, table_content in trip.items():
+            if table_name == "sensor":
+                sensor_data = table_content[table_content["sensor"] == sensor_type]
+            if table_name == "annotation":
+                annotation_data = table_content
+                mode = annotation_data["mode"][0]
+                notes = annotation_data["notes"][0]
+                if "scripted" in str(notes).lower():
+                    scripted = 1
+                else:
+                    scripted = 0
+        return sensor_data, mode, notes, scripted
+
+    @staticmethod
+    def unpack_all_trips(dfs: dict):
+        """
+        Helper method that takes a dictionary of the trips per token and returns a list
+        of all trips. Assumed nested structure is:
+        dict[token] = list of trips per token
+        """
+        result = []
+        for token, trips in sorted(dfs.items()):
+            result += trips
+        return result
+
 
     @staticmethod
     def restore_preprocessed_data_from_disk(filename: str):
@@ -79,8 +495,9 @@ class Preprocessor:
         :param filename: File name/relative path in /data/preprocessed.
         :return: Dictionary holding data for tokens (same format as returned by Preprocessor.preprocess().
         """
-
-        with open("../../data/" + filename, "rb") as file:
+        data_dir = DatasetDownloader.get_data_dir()
+        full_path = os.path.join(data_dir, "preprocessed", filename)
+        with open(full_path, "rb") as file:
             preprocessed_data = file.read()
 
         # https://media.giphy.com/media/9zXWAIcr6jycE/giphy.gif
@@ -148,18 +565,20 @@ class Preprocessor:
         :return: List of cleaned/cut dataframes.
         """
 
-        scripted_trips = {"TRAM": 0, "METRO": 0, "WALK": 0}
+        trips = {"scripted": {"TRAM": 0, "METRO": 0, "WALK": 0}, "unscripted": {"TRAM": 0, "METRO": 0, "WALK": 0}}
         for i, df in enumerate(dataframes):
             # Assuming "notes" only has one entry per trip and scripted trips' notes contain the word "scripted",
             # while ordinary trips' notes don't.
             if "scripted" in str(df["annotation"]["notes"][0]).lower():
-                scripted_trips[df["annotation"]["mode"][0]] += 1
+                trips["scripted"][df["annotation"]["mode"][0]] += 1
                 for dataframe_name in list_of_dataframe_names_to_cut:
                     # Cut off time series data.
                     dataframes[i][dataframe_name] = Preprocessor._cut_off_start_and_end_in_dataframe(
                         dataframe=df[dataframe_name], cutoff_in_seconds=cutoff_in_seconds
                     )
-        print(scripted_trips)
+            else:
+                trips["unscripted"][df["annotation"]["mode"][0]] += 1
+
         return dataframes
 
     @staticmethod
@@ -185,7 +604,7 @@ class Preprocessor:
             # before the last entry.
             dataframe = dataframe[
                 (dataframe["time"] >= lower_time_threshold + cutoff_in_seconds) &
-                (dataframe["time"] <= upper_time_threshold + cutoff_in_seconds)
+                (dataframe["time"] <= upper_time_threshold - cutoff_in_seconds)
             ]
 
             return dataframe
@@ -588,39 +1007,60 @@ class Preprocessor:
         return dfs
 
     @staticmethod
-    def calculate_paa(dfs):
-        # new dict
-        newDict = deepcopy(dfs)
-        for i in range(0, len(newDict)):
-            print('Frame ', i)
+    def _get_shallow_copy(dfs: list):
+        """ Helper function to get a shallow copy of the list of dictionaries
+            as only sensor data is modified and the rest can be references.
+        """
+        nr_of_trips = len(dfs)
+        result = [{} for trip in range(nr_of_trips)]
+        for trip_index, trip_i in enumerate(dfs):
+            for key, values in trip_i.items():
+                if key == "sensor":
+                    result[trip_index][key] = None
+                else:
+                    result[trip_index][key] = values
+        return result
+
+
+    @staticmethod
+    def calculate_paa(dfs, verbose=False):
+        newDict = Preprocessor._get_shallow_copy(dfs)
+        nr_of_trips = len(dfs)
+        for i in range(0, nr_of_trips):
+            if verbose:
+                print('Frame ', i)
             #get single trip
-            sensor_trip = newDict[i]['sensor']
+            sensor_trip = dfs[i]['sensor']
             #get all sensors
             sensor_set = set(sensor_trip['sensor'])
             #create new data frame
             helper = pd.DataFrame()
 
             for sensor in sensor_set:
-                print("sensor: ", sensor)
-                # make deep copy of data frame
-                sensor_data = deepcopy(sensor_trip[sensor_trip['sensor'] == sensor])
+                if verbose:
+                    print("sensor: ", sensor)
 
-                #print('init time frame')
-                #print(Preprocessor.convert_timestamps(sensor_data.head(1)))
-                #print(Preprocessor.convert_timestamps(sensor_data.tail(1)))
+                sensor_data = sensor_trip[sensor_trip['sensor'] == sensor]
+
+                if verbose:
+                    print('init time frame')
+                    print(Preprocessor.convert_timestamps(sensor_data.head(1)))
+                    print(Preprocessor.convert_timestamps(sensor_data.tail(1)))
 
                 sensor_data = sensor_data.drop(['sensor', 'total'], axis=1)
                 sensor_data.reset_index(drop=True,inplace=True)
-                sensor_data = Preprocessor.approx_sensor(sensor_data, 100)
+                sensor_data_approximated = Preprocessor.approx_sensor(sensor_data, 100)
 
                 start_index = 0
                 stop_index = 1
-                end_of_df = len(sensor_data)
+                end_of_df = len(sensor_data_approximated)
 
                 buffer_helper = pd.DataFrame()
                 filler = pd.DataFrame()
 
-                #print("end_of_df:", end_of_df)
+
+                if verbose:
+                    print("end_of_df:", end_of_df)
 
                 while stop_index <= end_of_df:
                     if start_index + 30000 <= end_of_df:
@@ -628,14 +1068,7 @@ class Preprocessor:
                     else:
                         stop_index = end_of_df+1
 
-                    buffer_helper = deepcopy(sensor_data.iloc[start_index:stop_index,:])
-                    buffer_helper = Preprocessor.normalize_trip(buffer_helper)
-
-                    #print('normalization start:', start_index)
-                    #print('normalization stop:', stop_index)
-                    #print(Preprocessor.convert_timestamps(buffer_helper.head(1))['time'])
-                    #print(Preprocessor.convert_timestamps(buffer_helper.tail(1))['time'])
-                    #print('************************')
+                    buffer_helper = Preprocessor.normalize_trip(sensor_data_approximated.iloc[start_index:stop_index,:])
 
                     filler = filler.append(buffer_helper)
                     start_index = stop_index
@@ -644,11 +1077,12 @@ class Preprocessor:
                 filler['total'] = np.linalg.norm(np.array([filler['x'], filler['y'], filler['z']]),ord=2, axis=0)
                 helper = pd.concat([helper,filler])
 
-                #print("complete frame")
-                #print(Preprocessor.convert_timestamps(helper.head(1))['time'])
-                #print(Preprocessor.convert_timestamps(helper.tail(1))['time'])
-                #print('----------------------------')
-            #print(helper.head(1))
+                if verbose:
+                    print("complete frame")
+                    print(Preprocessor.convert_timestamps(helper.head(1))['time'])
+                    print(Preprocessor.convert_timestamps(helper.tail(1))['time'])
+                    print('----------------------------')
+
             newDict[i]['sensor'] = helper
         return Preprocessor.convert_timestamps(newDict)
 
@@ -708,13 +1142,12 @@ class Preprocessor:
         -------
         df : a pandas DataFrame containing the interpolated series
         """
-        copy_dummy = deepcopy(trip)
 
         paa = PAA(window_size=5, output_size=None, overlapping=False)
-        container = list()
-
-        for label in copy_dummy.columns:
-            arr = np.array([copy_dummy[label]], dtype=np.float64)
+        container = []
+        for label in trip.columns:
+            # this creates a new object, change to float32 increases speed
+            arr = np.array([trip[label]], dtype=np.float64)
             transf = paa.transform(arr)
             container.append(list(transf[0]))
 
@@ -722,11 +1155,12 @@ class Preprocessor:
         df['time'] = [int(i) for i in df['time']]
         return df
 
-    @staticmethod
-    def plot_paa(sensor_data, w_size=5, seconds=2):
-
-
-        plot_paa(feature, window_size=w_size,output_size=None,overlapping=False,marker='o')
+    # Note by rmitsch: Commented out since variable 'feature' is not defined. To remove?
+    # @staticmethod
+    # def plot_paa(sensor_data, w_size=5, seconds=2):
+    #
+    #
+    #     plot_paa(feature, window_size=w_size,output_size=None,overlapping=False,marker='o')
 
     @staticmethod
     def print_start_and_end_of_recording_per_sensor(df):
@@ -735,7 +1169,7 @@ class Preprocessor:
             print("sensor: ", sensor)
             # get all sensor data for specific sensor
             sensor_data = deepcopy(df[df["sensor"] == sensor])
-            #reset indices
+
             sensor_data.reset_index(drop=True,inplace=True)
 
             start = min(sensor_data['time'])
