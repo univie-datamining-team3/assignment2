@@ -10,7 +10,7 @@ from pyts.visualization import plot_paa
 from pyts.transformation import PAA
 import pickle
 from scipy.spatial.distance import cdist, squareform
-from .DTWThread import DTWThread
+from data.DTWThread import DTWThread
 import psutil
 
 
@@ -108,7 +108,7 @@ class Preprocessor:
             # 3. Cut first and last 30 seconds from scripted trips.
             dfs = Preprocessor.replace_none_values_with_empty_dataframes(
                 Preprocessor._cut_off_start_and_end_in_dataframes(
-                    dataframes=dfs, list_of_dataframe_names_to_cut=["sensor", "location"], cutoff_in_seconds=30
+                    dataframes=dfs, list_of_dataframe_names_to_cut=["sensor", "location"], cutoff_in_seconds=60
                 )
             )
 
@@ -476,14 +476,22 @@ class Preprocessor:
         return sensor_data, mode, notes, scripted
 
     @staticmethod
-    def unpack_all_trips(dfs: dict):
+    def unpack_all_trips(dfs: dict, keep_tokens=False):
         """
         Helper method that takes a dictionary of the trips per token and returns a list
         of all trips. Assumed nested structure is:
         dict[token] = list of trips per token
+        :param keep_tokens: bool, default=False,
+                    if True, the token is appended to the annotation dataframe.
+                    This makes it easier to identify the trips later.
         """
         result = []
-        for token, trips in sorted(dfs.items()):
+        dfs_copy = deepcopy(dfs)
+        for token, trips in sorted(dfs_copy.items()):
+            if keep_tokens:
+                for trip_i in trips:
+                    if trip_i["annotation"] is not None:
+                        trip_i["annotation"]["token"]=token
             result += trips
         return result
 
@@ -892,7 +900,7 @@ class Preprocessor:
         result : pandas DataFrame
             a pandas dataframe with the summaries for each trip
         """
-        nr_of_recorded_trips_token = len(all_trips)
+        nr_of_recorded_trips = len(all_trips)
         result = pd.DataFrame()
         if convert_time:
             all_trips_copy = Preprocessor.convert_timestamps(all_trips)
@@ -900,7 +908,7 @@ class Preprocessor:
             all_trips_copy = all_trips
         start_times = []
         end_times = []
-        for index in range(0, nr_of_recorded_trips_token):
+        for index in range(0, nr_of_recorded_trips):
             trip_i = all_trips_copy[index]
             if ("annotation" in trip_i.keys()) and (not trip_i["annotation"].empty):
                 result = pd.concat([result, trip_i["annotation"]])
