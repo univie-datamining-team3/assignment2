@@ -8,12 +8,12 @@ import os
 import sys
 import argparse
 import logging
-from dotenv import find_dotenv, load_dotenv
 sys.path.append(os.path.join(os.getcwd(), os.pardir, 'src'))
+
+from dotenv import find_dotenv, load_dotenv
 from data.download import DatasetDownloader
 from data.preprocessing import Preprocessor
 from utils.utilities import str2bool
-import numpy
 
 FLAGS = None
 
@@ -25,13 +25,11 @@ def main():
 
     logger = logging.getLogger(__name__)
 
-
     # Set environment variables.
     load_dotenv(find_dotenv())
     DatasetDownloader.URL = str(os.environ.get("URL"))
     DatasetDownloader.USERNAME = str(os.environ.get("LOGINNAME"))
     DatasetDownloader.PASSWORD = str(os.environ.get("LOGINPASSWORD"))
-
 
     if FLAGS.download:
         # Download data.
@@ -42,14 +40,15 @@ def main():
     if FLAGS.preprocess:
         logger.info('start preprocessing data:')
         # Preprocess data. Store it in /data/preprocessed/preprocessed_data.dat.
-        dfs = Preprocessor.preprocess([os.environ.get("KEY_RAPHAEL"),
-                                       os.environ.get("KEY_MORITZ"),
-                                       os.environ.get("KEY_LUKAS")],
-                                      filename="preprocessed_data.dat")
+        tokens = [os.environ.get(alias) for alias in ["KEY_RAPHAEL", "KEY_MORITZ", "KEY_LUKAS"]]
+        dfs = Preprocessor.preprocess(tokens,
+                                      filename="preprocessed_data.dat",
+                                      distance_metric="euclidean",
+                                      use_individual_columns=False)
 
         # Load dataframes from disk.
         # dfs = Preprocessor.restore_preprocessed_data_from_disk(filename="preprocessed_data.dat")
-
+#
         logger.info('preprocessing was successful')
 
 if __name__ == '__main__':
