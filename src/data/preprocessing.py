@@ -45,8 +45,12 @@ class Preprocessor:
         """
 
         # 1. Preprocess data per token.
-        preprocessed_data = Preprocessor._preprocess_data_per_token(tokens=tokens)
-
+        #preprocessed_data = Preprocessor._preprocess_data_per_token(tokens=tokens)
+        # Load dataframes from disk.
+        preprocessed_data_dir = os.path.join(os.path.abspath(DatasetDownloader.get_data_dir()))
+        preprocessed_data_dir = os.path.join(preprocessed_data_dir,"preprocessed","preprocessed_data.dat")
+        preprocessed_data = Preprocessor.restore_preprocessed_data_from_disk(filename=preprocessed_data_dir)
+#
         # 2. Cut all trips in 30 second snippets
         trips_cut_per_30_sec = Preprocessor.get_cut_trip_snippets_for_targets(
             preprocessed_data,
@@ -55,30 +59,32 @@ class Preprocessor:
             target_column_names=["total", "x", "y", "z"]
         )
 
+        print("dimensions:", trips_cut_per_30_sec[0].shape)
+
         # 3. Apply distance metric and calculate distance matrix
-        distance_matrix = None
-        if distance_metric is not None:
-            if use_individual_columns:
-                distance_matrix = Preprocessor.calculate_distance_for_individual_columns(
-                        dataframes=trips_cut_per_30_sec[1:4]
-                )
-            else:
-                distance_matrix = Preprocessor.calculate_distance_for_n2(
-                    trips_cut_per_30_sec[0],
-                    metric=distance_metric
-                )
+        # distance_matrix = None
+        # if distance_metric is not None:
+        #     if use_individual_columns:
+        #         distance_matrix = Preprocessor.calculate_distance_for_individual_columns(
+        #                 dataframes=trips_cut_per_30_sec[1:4]
+        #         )
+        #     else:
+        #         distance_matrix = Preprocessor.calculate_distance_for_n2(
+        #             trips_cut_per_30_sec[0],
+        #             metric=distance_metric
+        #         )
 
         # 4. Dump data to file, if requested.
-        if filename is not None:
-            Preprocessor.persist_results(
-                filename=filename,
-                preprocessed_data=preprocessed_data,
-                trips_cut_per_30_sec=trips_cut_per_30_sec,
-                distance_metric=distance_metric,
-                distance_matrix_n2=distance_matrix
-            )
-
-        return preprocessed_data
+        # if filename is not None:
+        #     Preprocessor.persist_results(
+        #         filename=filename,
+        #         preprocessed_data=preprocessed_data,
+        #         trips_cut_per_30_sec=trips_cut_per_30_sec,
+        #         distance_metric=distance_metric,
+        #         distance_matrix_n2=distance_matrix
+        #     )
+        #
+        # return preprocessed_data
 
     @staticmethod
     def _preprocess_data_per_token(tokens: list):
@@ -382,7 +388,7 @@ class Preprocessor:
         return result
 
     @staticmethod
-    def _calculate_distance_with_dtw(data, norm: int = 1):
+    def _calculate_distance_with_dtw(data, norm: int = 2):
         """
         Calculates metric for specified dataframe using dynamic time warping utilizing norm.
         :param data:

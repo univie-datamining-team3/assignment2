@@ -6,6 +6,7 @@ Script for applying the data processing tasks
 # -*- coding: utf-8 -*-
 import os
 import sys
+sys.path.append(os.path.join(os.getcwd(), os.pardir, 'src'))
 import argparse
 import logging
 from dotenv import find_dotenv, load_dotenv
@@ -13,7 +14,6 @@ from data.download import DatasetDownloader
 from data.preprocessing import Preprocessor
 from utils.utilities import str2bool
 
-sys.path.append(os.path.join(os.getcwd(), os.pardir, 'src'))
 FLAGS = None
 
 
@@ -42,7 +42,7 @@ def main():
         tokens = [os.environ.get(alias) for alias in ["KEY_RAPHAEL", "KEY_MORITZ", "KEY_LUKAS"]]
         dfs = Preprocessor.preprocess(tokens,
                                       filename="preprocessed_data.dat",
-                                      distance_metric=None)
+                                      distance_metric='dtw')
 
         # Load dataframes from disk.
         # dfs = Preprocessor.restore_preprocessed_data_from_disk(filename="preprocessed_data.dat")
@@ -55,7 +55,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--download',
                         type=str2bool,
-                        default="True",
+                        default="False",
                         help='Set true, if you want to download all data')
     parser.add_argument('--preprocess',
                         type=str2bool,

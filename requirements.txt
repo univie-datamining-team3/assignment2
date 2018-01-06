@@ -1,3 +1,4 @@
+wheel>=0.30
 Cython==0.27.3
 numpy>=1.13.1
 scipy==0.19.1
@@ -19,3 +20,4 @@ psutil==5.4.2
 hdbscan==0.8.11
 sobol-seq==0.1.2
 plotly==2.2.3
+future==0.16.0
