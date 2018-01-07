@@ -39,7 +39,7 @@ def main():
     if FLAGS.preprocess:
         logger.info('start preprocessing data:')
         # Preprocess data. Store it in /data/preprocessed/preprocessed_data.dat.
-        tokens = [os.environ.get(alias) for alias in ["KEY_RAPHAEL"]]#, "KEY_MORITZ", "KEY_LUKAS"]]
+        tokens = [os.environ.get(alias) for alias in ["KEY_RAPHAEL", "KEY_MORITZ", "KEY_LUKAS"]]
         dfs = Preprocessor.preprocess(tokens,
                                       filename="preprocessed_data.dat",
                                       distance_metric='dtw',
