@@ -9,6 +9,8 @@ import sys
 sys.path.append(os.path.join(os.getcwd(), os.pardir, 'src'))
 import argparse
 import logging
+sys.path.append(os.path.join(os.getcwd(), os.pardir, 'src'))
+
 from dotenv import find_dotenv, load_dotenv
 from data.download import DatasetDownloader
 from data.preprocessing import Preprocessor
@@ -42,7 +44,8 @@ def main():
         tokens = [os.environ.get(alias) for alias in ["KEY_RAPHAEL", "KEY_MORITZ", "KEY_LUKAS"]]
         dfs = Preprocessor.preprocess(tokens,
                                       filename="preprocessed_data.dat",
-                                      distance_metric='dtw')
+                                      distance_metric='dtw',
+                                      use_individual_columns=False)
 
         # Load dataframes from disk.
         # dfs = Preprocessor.restore_preprocessed_data_from_disk(filename="preprocessed_data.dat")
