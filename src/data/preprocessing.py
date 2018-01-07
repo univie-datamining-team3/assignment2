@@ -98,7 +98,7 @@ class Preprocessor:
                     # Get travel data per token.
                     Preprocessor.get_data_per_token(token)
                 )
-            )
+            )[:1]
 
             # 2. Remove trips less than 10 minutes long.
             dfs = Preprocessor.replace_none_values_with_empty_dataframes(

@@ -51,12 +51,18 @@ class DTWThread(threading.Thread):
         """
         # Calculate distance with fastDTW between each pairing of segments. Distances between elements to themselves
         # are ignored and hence retain their intial value of 0.
-
         for i, segment_pairing in enumerate(self.segment_pairings[self.interval[0]:(self.interval[1] + 1)]):
+            # distance, cost, acc, path = dtw(
+            #     self.data_to_process.iloc[segment_pairing[0]].values.reshape(-1, 1),
+            #     self.data_to_process.iloc[segment_pairing[1]].values.reshape(-1, 1),
+            #     dist=lambda x, y: np.linalg.norm(x - y, ord=self.norm)
+            # )
+
             distance, path = fastdtw(
-                self.data_to_process.iloc[segment_pairing[0]].values,
-                self.data_to_process.iloc[segment_pairing[1]].values,
+                self.data_to_process.iloc[segment_pairing[0]].values.reshape(-1, 1),
+                self.data_to_process.iloc[segment_pairing[1]].values.reshape(-1, 1),
                 dist=self.norm
             )
+
             self.distance_matrix[segment_pairing[0], segment_pairing[1]] = distance
             self.distance_matrix[segment_pairing[1], segment_pairing[0]] = distance
