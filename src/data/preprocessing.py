@@ -32,7 +32,7 @@ class Preprocessor:
     }
 
     @staticmethod
-    def preprocess(tokens, filename: str = None, distance_metric: str = "euclidean", use_individual_columns: bool = False):
+    def preprocess(tokens, filename: str = None, distance_metric: str = "euclidean", use_individual_columns: bool = False, load_preprocessed: str = None):
         """
         Executes all preprocessing steps.
         :param tokens: List with keys of tokens to preprocess.
@@ -45,7 +45,11 @@ class Preprocessor:
         """
 
         # 1. Preprocess data per token.
-        preprocessed_data = Preprocessor._preprocess_data_per_token(tokens=tokens)
+        if load_preprocessed is not None:
+            # Load dataframes from disk.
+            preprocessed_data = Preprocessor.restore_preprocessed_data_from_disk(filename=load_preprocessed)
+        else:
+            preprocessed_data = Preprocessor._preprocess_data_per_token(tokens=tokens)
 
         # 2. Cut all trips in 30 second snippets
         trips_cut_per_30_sec = Preprocessor.get_cut_trip_snippets_for_targets(
@@ -402,7 +406,6 @@ class Preprocessor:
 
         # Set up multithreading. Run as many threads as logical cores are available on this machine - 1.
         num_threads = psutil.cpu_count(logical=True)
-
         threads = []
         for i in range(0, num_threads):
             # Calculate distance with fastDTW between each pairing of segments. Distances between elements to themselves
