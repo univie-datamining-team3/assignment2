@@ -41,6 +41,9 @@ class Preprocessor:
         :param distance_metric: Distance metric to apply for comparison between trip segments.
         :param use_individual_columns: Defines whether individual columns (x, y, z) or the total (n2) value should be
         used for distance calculation.
+        :load_preprocessed: str, default=None, specifies a path to a pickled preprocessed_data.dat file.
+            if this parameter is not None the preprocessing step is skipped and the pickled data will be
+            loaded.
         :return: Dictionary with preprocessed data. Specified tokens are used as keys.
         """
 
@@ -80,6 +83,7 @@ class Preprocessor:
                 trips_cut_per_30_sec=trips_cut_per_30_sec,
                 distance_metric=distance_metric,
                 distance_matrix_n2=distance_matrix
+                use_individual_columns=use_individual_columns
             )
 
         return preprocessed_data
@@ -128,7 +132,7 @@ class Preprocessor:
 
     @staticmethod
     def persist_results(filename: str, preprocessed_data: dict, trips_cut_per_30_sec: list,
-                        distance_metric: str, distance_matrix_n2: pd.DataFrame):
+                        distance_metric: str, distance_matrix_n2: pd.DataFrame, use_individual_columns=False):
         """
         Stores preprocessing results on disk.
         :param filename:
@@ -136,6 +140,7 @@ class Preprocessor:
         :param trips_cut_per_30_sec:
         :param distance_metric:
         :param distance_matrix_n2:
+        :param use_individual_columns: indicates if individual columns were used
         :return:
         """
 
@@ -153,7 +158,10 @@ class Preprocessor:
         trips_cut_per_30_sec[3].to_csv(full_path[:-4] + "_z.csv", sep=";", index=False)
 
         if distance_metric is not None:
-            distance_matrix_n2_path = full_path[:-4] + "_" + distance_metric + ".csv"
+            if use_individual_columns:
+                distance_matrix_n2_path = full_path[:-4] + "_" + "individual" + "_" + distance_metric + "_xyz" +".csv"
+            else:
+                distance_matrix_n2_path = full_path[:-4] + "_" + distance_metric + ".csv"
             distance_matrix_n2.to_csv(distance_matrix_n2_path, sep=";", index=False)
 
     @staticmethod

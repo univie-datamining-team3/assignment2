@@ -42,9 +42,9 @@ def main():
         # Preprocess data. Store it in /data/preprocessed/preprocessed_data.dat.
         tokens = [os.environ.get(alias) for alias in ["KEY_RAPHAEL", "KEY_MORITZ", "KEY_LUKAS"]]
         dfs = Preprocessor.preprocess(tokens,
-                                      filename="preprocessed_data.dat",
-                                      distance_metric="euclidean",
-                                      use_individual_columns=False)
+                                      filename=FLAGS.file_name,
+                                      distance_metric=FLAGS.distance_metric,
+                                      use_individual_columns=FLAGS.use_individual_columns)
 
         # Load dataframes from disk.
         # dfs = Preprocessor.restore_preprocessed_data_from_disk(filename="preprocessed_data.dat")
@@ -63,5 +63,18 @@ if __name__ == '__main__':
                         type=str2bool,
                         default="True",
                         help='Set true, if you want to apply the preprocessing')
+    parser.add_argument('--use_individual_columns',
+                        type=str2bool,
+                        default="False",
+                        help='Set true, if you want to apply the preprocessing and distance calculation to all individual columns')
+    parser.add_argument('--distance_metric',
+                        type=str,
+                        default="euclidean",
+                        help='specify which distance metric should be used, e.g. cityblock, sqeuclidean, dtw ... For a full list of all available choices see our documentation')
+    parser.add_argument('--file_name',
+                        type=str,
+                        default="preprocessed_data.dat",
+                        help='specify the name of the pickled output file. NOTE that all other file names will start with the specified name.')
+
     FLAGS, unparsed = parser.parse_known_args()
     main()
