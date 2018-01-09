@@ -7,6 +7,9 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import matplotlib.patches as mpatches
 import matplotlib.dates as mdates
+from sklearn.manifold import TSNE
+from mpl_toolkits.mplot3d import Axes3D
+
 
 import gmplot
 import os
@@ -232,3 +235,81 @@ def get_plot_timeseries_clustering_variables(distance_matrix, trips, trip_id, se
 
     return (list(sensor_data_trip_i[x_column]), list(sensor_data_trip_i[y_column]),
             cluster_labels)
+
+
+def get_distribution_of_cluster_labels_for(target, data):
+    """
+    Helper function for visualizing the distribution cluster labels per target label.
+    """
+    column_names = ["count_cluster_"+str(i) for i in np.sort(data["cluster_labels"].unique())]
+    column_names += [target]
+    dist_df = pd.DataFrame(columns=column_names)
+    # Collect cluster counts per mode
+    for index, target_value in enumerate(data[target].unique()):
+        distance_per_target_value = data[data[target]==target_value]
+        dist_df.loc[index,target]=target_value
+        cluster_label_dist = distance_per_target_value.groupby("cluster_labels").count()[target]
+        for cluster_id, label_count in cluster_label_dist.iteritems():
+                dist_df.loc[index,"count_cluster_"+str(cluster_id)]=label_count
+
+        dist_df.fillna(0,inplace=True)
+
+    return dist_df
+
+def plot_distribution_of_cluster_labels_for_target(target, data):
+    df = get_distribution_of_cluster_labels_for(target, data)
+    df.set_index(target).plot(kind="bar",figsize=(15,5), title="Cluster Labels per {}".format(target));
+
+
+
+def plot_all_trips_with_cluster_coloring(all_trips,feature_matrix, sensor_type="acceleration"):
+    trip_ids = [i for i in feature_matrix.trip_id.unique()]
+    for trip_id in trip_ids:
+        time, total, labels = \
+            get_plot_timeseries_clustering_variables(feature_matrix,
+                                                     all_trips,
+                                                     trip_id,
+                                                     sensor_type=sensor_type)
+
+
+        mode = all_trips[trip_id]["annotation"]["mode"][0]
+        notes = all_trips[trip_id]["annotation"]["notes"][0]
+
+        title_format = "Trip_id: {} Mode: {} and Notes: {}"
+
+        fig, ax = plt.subplots(figsize=(15, 5))
+        ax.set_title(title_format.format(trip_id,mode,notes))
+        plot_timeseries_clustering(time,total, labels, ax=ax)
+
+
+def plot_2D_tsne_with_coloring_per_targets(features, targets, learning_rate=1000, perplexity=30, axes=None):
+    if axes is None:
+        fig,axes = plt.subplots(nrows=1, ncols=targets.shape[1], figsize=(15,4))
+
+    tsne = TSNE(learning_rate=learning_rate, perplexity=perplexity).fit_transform(features)
+
+    label_names = list(targets.columns)
+    for ax, labeling in zip(axes,label_names):
+        colors, color_patches = get_color_encoding(targets[labeling])
+        ax.legend(loc=3,
+                  handles=color_patches)
+        ax.set_title("TSNE-Plot with {}".format(labeling))
+        ax.scatter(tsne[:, 0], tsne[:, 1], c=colors)
+    plt.tight_layout();
+
+
+def plot_3D(x,y,z,colors=None,color_patches=None,ax=None, title=None):
+    """
+    Make  a simple 3D plot
+    """
+    if ax is None:
+        fig = plt.figure()
+        ax = fig.add_subplot(111, projection='3d')
+    box = ax.get_position()
+    ax.set_position([box.x0, box.y0, box.width * 0.8, box.height])
+
+    ax.legend(loc='center left', bbox_to_anchor=(1, 0.5),
+              handles=color_patches)
+    if title is not None:
+        ax.set_title(str(title))
+    ax.scatter(xs=x, ys=y, zs=z, c=colors)
