@@ -8,6 +8,8 @@ import seaborn as sns
 import matplotlib.patches as mpatches
 import matplotlib.dates as mdates
 from sklearn.manifold import TSNE
+from mpl_toolkits.mplot3d import Axes3D
+
 
 import gmplot
 import os
@@ -285,3 +287,20 @@ def plot_2D_tsne_with_coloring_per_targets(features, targets, learning_rate=1000
         ax.set_title("TSNE-Plot with {}".format(labeling))
         ax.scatter(tsne[:, 0], tsne[:, 1], c=colors)
     plt.tight_layout();
+
+
+def plot_3D(x,y,z,colors=None,color_patches=None,ax=None, title=None):
+    """
+    Make  a simple 3D plot
+    """
+    if ax is None:
+        fig = plt.figure()
+        ax = fig.add_subplot(111, projection='3d')
+    box = ax.get_position()
+    ax.set_position([box.x0, box.y0, box.width * 0.8, box.height])
+
+    ax.legend(loc='center left', bbox_to_anchor=(1, 0.5),
+              handles=color_patches)
+    if title is not None:
+        ax.set_title(str(title))
+    ax.scatter(xs=x, ys=y, zs=z, c=colors)
