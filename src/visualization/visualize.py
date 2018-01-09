@@ -69,23 +69,32 @@ def plot_gps_heatmap(tracks, file_name):
 
 
 
-def plot_acceleration_sensor(acceleration_for_one_trip: pd.DataFrame):
-    figsize=(12, 4)
+def plot_acceleration_sensor(acceleration_for_one_trip: pd.DataFrame, name, counter, mode, info='SCRIPTED'):
+
+    figsize=(12, 16)
+    plt.subplot(4, 1, 1)
     acceleration_for_one_trip["x"].plot(figsize=figsize);
     plt.ylabel("x")
-    plt.show();
 
+    plt.subplot(4, 1, 2)
     acceleration_for_one_trip["y"].plot(figsize=figsize);
     plt.ylabel("y")
-    plt.show();
 
+    plt.subplot(4, 1, 3)
     acceleration_for_one_trip["z"].plot(figsize=figsize);
     plt.ylabel("z")
-    plt.show();
 
+    plt.subplot(4, 1, 4)
     acceleration_for_one_trip["total"].plot(figsize=figsize);
     plt.ylabel("total")
-    plt.show();
+
+    map_dir = os.path.join(get_vis_dir(),"acc")
+    file_name = 'acc_' + str(name) + '_' + str(counter) + '_'  + str(mode) + '_' + str(info) + '.png'
+    setup_directory(map_dir)
+
+    plt.tight_layout()
+    plt.savefig(os.path.join(map_dir, file_name))
+    plt.show()
 
 
 def get_color_encoding(color_coding):
