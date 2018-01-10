@@ -1,7 +1,12 @@
 from sklearn import metrics
 import pandas as pd
+import numpy as np
 from copy import deepcopy
 import os
+import re
+from io import StringIO
+
+from subprocess import Popen, PIPE
 from data.download import DatasetDownloader
 from data.preprocessing import Preprocessor
 import time
@@ -10,6 +15,115 @@ import plotly.offline as plotly_offline
 import plotly.graph_objs as go
 import matplotlib.pyplot as plt
 
+
+class ElkiPipe:
+    """
+    This class provides a pipe to the java implementation of elki:
+    https://elki-project.github.io/
+    """
+    def __init__(self, elki_path_to_jar=None):
+        if elki_path_to_jar is None:
+            self.elki_path_to_jar = os.path.join("models","elki-bundle-0.7.1.jar")
+
+    def run_elki(self, df:pd.DataFrame, parameters:list, plot_path=None):
+        """
+        Wrapper function to elki java implementation.
+        Based on https://stackoverflow.com/questions/15326505/running-clustering-algorithms-in-elki and
+        the command line builder from https://elki-project.github.io/
+        e.g. For predecon we have the following command:
+        KDDCLIApplication -dbc.in filepath -algorithm clustering.subspace.PreDeCon -dbscan.epsilon 10.0 -dbscan.minpts 5 \
+         -predecon.delta 0.1 -predecon.lambda 2
+
+        """
+
+        if plot_path is None:
+            elki_data = self.__remove_unused_columns(df)
+        else:
+            elki_data = df
+
+        temp_path = "elki_temp.csv"
+        elki_data.to_csv(temp_path, sep=";", index=False)
+
+        constant_args = ["java", "-jar", self.elki_path_to_jar,
+                         "KDDCLIApplication",
+                         "-dbc.in", temp_path,
+                         "-parser.colsep", ";"]
+
+        args = constant_args + parameters
+        if plot_path is not None:
+            args += ["-resulthandler", "ExportVisualizations",
+                     "-vis.output", plot_path]
+
+        process = Popen(args,
+                        stdout=PIPE)
+        (console_output, error) = process.communicate()
+        exit_code = process.wait()
+        if exit_code != 0:
+            raise IOError ("ELKI failed to run:\n{}".format(console_output.decode("utf-8", errors='ignore')))
+
+        #clean up file
+        os.remove(temp_path)
+
+        clustering_results = console_output.decode("utf-8")
+
+        #process console output
+        cleaned_results = self.__get_elki_cluster_result(clustering_results)
+        return cleaned_results
+
+    @staticmethod
+    def __get_elki_cluster_result(results):
+        """ Constructs a dataframe with the cluster labels
+        """
+        print(results)
+        cleaned_results = pd.DataFrame(columns=["ID","label"])
+        for cluster_id, points_in_cluster in enumerate(results.split("Cluster: Cluster")[1:]):
+            helper_df = pd.DataFrame(columns=["ID","label"])
+
+            # Important for sorting the points to its original order
+            point_ids = re.findall(r"ID=(\d+)", points_in_cluster)
+            helper_df["ID"] = point_ids
+            helper_df["label"] = cluster_id
+            cleaned_results = pd.concat([cleaned_results, helper_df])
+
+        # Prepare labels
+        cleaned_results = cleaned_results.sort_values("ID").drop("ID",axis=1).reset_index(drop=True)
+        return cleaned_results
+
+    @staticmethod
+    def get_parameters_for_predecon(param_eps = 10.0, param_minpts = 2, param_delta = 0.1, param_lambda = 1, param_kappa = 20.0):
+        """
+        This method returns the parameters for the PreDeCon algorithm in format for the Elki Pipe
+            # Hyperparameter param_minpts: Minimal number of points in epsilon-neighbourhood.
+            # Hyperparameter param_eps: Distance for neighbourhood.
+            # Hyperparameter param_delta : Variance threshold for subspace preference clusters.
+            # Hyperparameter param_lambda: Dimensionality threshold.
+            # Hyperparameter param_kappa: Weight for subspace preference vectors.
+        """
+
+        return [ "-algorithm", "clustering.subspace.PreDeCon",
+                 "-dbscan.epsilon", str(float(param_eps)),
+                 "-dbscan.minpts", str(param_minpts),
+                 "-predecon.delta", str(float(param_delta)),
+                 "-predecon.lambda", str(param_lambda),
+                 "-predecon.kappa", str(float(param_kappa))
+                ]
+
+    @staticmethod
+    def get_parameters_for_hdbscan(param_minpts=100):
+        return ["-algorithm", "clustering.hierarchical.HDBSCANLinearMemory",
+                "-hdbscan.minPts", str(param_minpts)]
+
+    @staticmethod
+    def __remove_unused_columns(df:pd.DataFrame, remove_cols = None):
+        if remove_cols is None:
+            remove_cols = ["mode", "notes", "scripted", "token", "trip_id"]
+        colnames = list(df.columns)
+        df_copy = deepcopy(df)
+        for col_i in remove_cols:
+            if col_i in colnames:
+                df_copy = df_copy.drop(col_i,axis=1)
+
+        return df_copy
 
 class Clustering:
     """
