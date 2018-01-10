@@ -70,6 +70,18 @@ def plot_gps_heatmap(tracks, file_name):
         file_name = file_name + '.html'
     gmap.draw(os.path.join(map_dir, file_name))
 
+def plot_single_acceleration_sensor_axis(acceleration_for_one_trip: pd.DataFrame, col_name, file_name):
+
+    figsize=(12, 4)
+    acceleration_for_one_trip[col_name].plot(figsize=figsize);
+    plt.ylabel(col_name)
+
+    map_dir = os.path.join(get_vis_dir(),"acc")
+    file_name = 'acc_' + str(col_name) + '_' + file_name + '.png'
+    setup_directory(map_dir)
+    plt.tight_layout()
+    plt.savefig(os.path.join(map_dir, file_name))
+    plt.show()
 
 
 def plot_acceleration_sensor(acceleration_for_one_trip: pd.DataFrame, name, counter, mode, info='SCRIPTED'):
