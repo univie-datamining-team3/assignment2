@@ -10,7 +10,7 @@ from pyts.visualization import plot_paa
 from pyts.transformation import PAA
 import pickle
 from scipy.spatial.distance import cdist, squareform
-from .DTWThread import DTWThread
+from data.DTWThread import DTWThread
 import psutil
 
 
@@ -32,7 +32,7 @@ class Preprocessor:
     }
 
     @staticmethod
-    def preprocess(tokens, filename: str = None, distance_metric: str = "euclidean", use_individual_columns: bool = False):
+    def preprocess(tokens, filename: str = None, distance_metric: str = "euclidean", use_individual_columns: bool = False, load_preprocessed: str = None):
         """
         Executes all preprocessing steps.
         :param tokens: List with keys of tokens to preprocess.
@@ -41,11 +41,18 @@ class Preprocessor:
         :param distance_metric: Distance metric to apply for comparison between trip segments.
         :param use_individual_columns: Defines whether individual columns (x, y, z) or the total (n2) value should be
         used for distance calculation.
+        :load_preprocessed: str, default=None, specifies a path to a pickled preprocessed_data.dat file.
+            if this parameter is not None the preprocessing step is skipped and the pickled data will be
+            loaded.
         :return: Dictionary with preprocessed data. Specified tokens are used as keys.
         """
 
         # 1. Preprocess data per token.
-        preprocessed_data = Preprocessor._preprocess_data_per_token(tokens=tokens)
+        if load_preprocessed is not None:
+            # Load dataframes from disk.
+            preprocessed_data = Preprocessor.restore_preprocessed_data_from_disk(filename=load_preprocessed)
+        else:
+            preprocessed_data = Preprocessor._preprocess_data_per_token(tokens=tokens)
 
         # 2. Cut all trips in 30 second snippets
         trips_cut_per_30_sec = Preprocessor.get_cut_trip_snippets_for_targets(
@@ -76,6 +83,7 @@ class Preprocessor:
                 trips_cut_per_30_sec=trips_cut_per_30_sec,
                 distance_metric=distance_metric,
                 distance_matrix_n2=distance_matrix
+                use_individual_columns=use_individual_columns
             )
 
         return preprocessed_data
@@ -108,7 +116,7 @@ class Preprocessor:
             # 3. Cut first and last 30 seconds from scripted trips.
             dfs = Preprocessor.replace_none_values_with_empty_dataframes(
                 Preprocessor._cut_off_start_and_end_in_dataframes(
-                    dataframes=dfs, list_of_dataframe_names_to_cut=["sensor", "location"], cutoff_in_seconds=30
+                    dataframes=dfs, list_of_dataframe_names_to_cut=["sensor", "location"], cutoff_in_seconds=60
                 )
             )
 
@@ -124,7 +132,7 @@ class Preprocessor:
 
     @staticmethod
     def persist_results(filename: str, preprocessed_data: dict, trips_cut_per_30_sec: list,
-                        distance_metric: str, distance_matrix_n2: pd.DataFrame):
+                        distance_metric: str, distance_matrix_n2: pd.DataFrame, use_individual_columns=False):
         """
         Stores preprocessing results on disk.
         :param filename:
@@ -132,6 +140,7 @@ class Preprocessor:
         :param trips_cut_per_30_sec:
         :param distance_metric:
         :param distance_matrix_n2:
+        :param use_individual_columns: indicates if individual columns were used
         :return:
         """
 
@@ -149,7 +158,10 @@ class Preprocessor:
         trips_cut_per_30_sec[3].to_csv(full_path[:-4] + "_z.csv", sep=";", index=False)
 
         if distance_metric is not None:
-            distance_matrix_n2_path = full_path[:-4] + "_" + distance_metric + ".csv"
+            if use_individual_columns:
+                distance_matrix_n2_path = full_path[:-4] + "_" + "individual" + "_" + distance_metric + "_xyz" +".csv"
+            else:
+                distance_matrix_n2_path = full_path[:-4] + "_" + distance_metric + ".csv"
             distance_matrix_n2.to_csv(distance_matrix_n2_path, sep=";", index=False)
 
     @staticmethod
@@ -402,7 +414,6 @@ class Preprocessor:
 
         # Set up multithreading. Run as many threads as logical cores are available on this machine - 1.
         num_threads = psutil.cpu_count(logical=True)
-
         threads = []
         for i in range(0, num_threads):
             # Calculate distance with fastDTW between each pairing of segments. Distances between elements to themselves
@@ -476,14 +487,22 @@ class Preprocessor:
         return sensor_data, mode, notes, scripted
 
     @staticmethod
-    def unpack_all_trips(dfs: dict):
+    def unpack_all_trips(dfs: dict, keep_tokens=False):
         """
         Helper method that takes a dictionary of the trips per token and returns a list
         of all trips. Assumed nested structure is:
         dict[token] = list of trips per token
+        :param keep_tokens: bool, default=False,
+                    if True, the token is appended to the annotation dataframe.
+                    This makes it easier to identify the trips later.
         """
         result = []
-        for token, trips in sorted(dfs.items()):
+        dfs_copy = deepcopy(dfs)
+        for token, trips in sorted(dfs_copy.items()):
+            if keep_tokens:
+                for trip_i in trips:
+                    if trip_i["annotation"] is not None:
+                        trip_i["annotation"]["token"]=token
             result += trips
         return result
 
@@ -892,7 +911,7 @@ class Preprocessor:
         result : pandas DataFrame
             a pandas dataframe with the summaries for each trip
         """
-        nr_of_recorded_trips_token = len(all_trips)
+        nr_of_recorded_trips = len(all_trips)
         result = pd.DataFrame()
         if convert_time:
             all_trips_copy = Preprocessor.convert_timestamps(all_trips)
@@ -900,7 +919,7 @@ class Preprocessor:
             all_trips_copy = all_trips
         start_times = []
         end_times = []
-        for index in range(0, nr_of_recorded_trips_token):
+        for index in range(0, nr_of_recorded_trips):
             trip_i = all_trips_copy[index]
             if ("annotation" in trip_i.keys()) and (not trip_i["annotation"].empty):
                 result = pd.concat([result, trip_i["annotation"]])

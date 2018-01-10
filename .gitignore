@@ -80,3 +80,4 @@ reports/maps/
 
 # Exclude .html files for parallel coordinates.
 parcoords-basic.html
+src/requirements_lukas\.txt
