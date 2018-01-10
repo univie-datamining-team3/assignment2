@@ -82,7 +82,7 @@ class Preprocessor:
                 preprocessed_data=preprocessed_data,
                 trips_cut_per_30_sec=trips_cut_per_30_sec,
                 distance_metric=distance_metric,
-                distance_matrix_n2=distance_matrix
+                distance_matrix_n2=distance_matrix,
                 use_individual_columns=use_individual_columns
             )
 

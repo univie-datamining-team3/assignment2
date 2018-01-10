@@ -1,7 +1,12 @@
 from sklearn import metrics
 import pandas as pd
+import numpy as np
 from copy import deepcopy
 import os
+import re
+from io import StringIO
+
+from subprocess import Popen, PIPE
 from data.download import DatasetDownloader
 from data.preprocessing import Preprocessor
 import time
@@ -9,6 +14,77 @@ from sklearn.cluster import KMeans
 import plotly.offline as plotly_offline
 import plotly.graph_objs as go
 import matplotlib.pyplot as plt
+
+
+def _get_elki_cluster_result(results):
+    """ Constructs a dataframe with the cluster labels
+    """
+    cleaned_results = pd.DataFrame(columns=["ID","label"])
+    for cluster_id, points_in_cluster in enumerate(results.split("Cluster: Cluster")[1:]):
+        helper_df = pd.DataFrame(columns=["ID","label"])
+
+        # Important for sorting the points to its original order
+        point_ids = re.findall(r"ID=(\d+)", points_in_cluster)
+        helper_df["ID"] = point_ids
+        helper_df["label"] = cluster_id
+        cleaned_results = pd.concat([cleaned_results, helper_df])
+
+    # Prepare labels
+    cleaned_results = cleaned_results.sort_values("ID").drop("ID",axis=1).reset_index(drop=True)
+    return cleaned_results
+
+
+
+def run_elki(df:pd.DataFrame):
+    """
+    Wrapper function to elki java implementation.
+    Based on https://stackoverflow.com/questions/15326505/running-clustering-algorithms-in-elki and
+    the command line builder from https://elki-project.github.io/
+    e.g. For predecon we have the following command:
+    KDDCLIApplication -dbc.in filepath -algorithm clustering.subspace.PreDeCon -dbscan.epsilon 10.0 -dbscan.minpts 5 \
+     -predecon.delta 0.1 -predecon.lambda 2
+
+    """
+
+    ELKI_PATH_TO_JAR = os.path.join("models","elki-bundle-0.7.1.jar")
+    categorical_columns = ["mode", "notes", "scripted", "token", "trip_id"]
+    elki_data = df.drop(categorical_columns,axis=1)
+
+    temp_path = "elki_temp.csv"
+    elki_data.to_csv(temp_path, sep=";", index=False)
+
+
+    param_eps = float(10.0)
+    param_minpts = 5
+    param_delta = float(0.1)
+    param_lambda = 2
+    param_kappa = float(20.0)
+
+    process = Popen(["java", "-jar", ELKI_PATH_TO_JAR,
+                     "KDDCLIApplication",
+                     "-algorithm", "clustering.subspace.PreDeCon",
+                     "-dbc.in", temp_path,
+                     "-parser.colsep", ";",
+                     "-dbscan.epsilon", str(param_eps),
+                     "-dbscan.minpts", str(param_minpts),
+                     "-predecon.delta", str(param_delta),
+                     "-predecon.kappa", str(param_kappa),
+                     "-predecon.lambda", str(param_lambda)
+                    ],
+                    stdout=PIPE)
+    (console_output, error) = process.communicate()
+    exit_code = process.wait()
+    if exit_code != 0:
+        raise IOError ("ELKI failed to run:\n{}".format(console_output.decode("utf-8", errors='ignore')))
+
+    #clean up file
+    os.remove(temp_path)
+
+    clustering_results = console_output.decode("utf-8")
+
+    #process console output
+    cleaned_results = _get_elki_cluster_result(clustering_results)
+    return cleaned_results
 
 
 class Clustering:
