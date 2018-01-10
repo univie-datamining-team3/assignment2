@@ -34,7 +34,7 @@ def main():
     if FLAGS.download:
         # Download data.
         logger.info('start downloading data into raw:')
-        DatasetDownloader.download_all()
+        #DatasetDownloader.download_all()
         logger.info('downloading was successfull')
 
     if FLAGS.preprocess:

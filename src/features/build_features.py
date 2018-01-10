@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 
 
-def feature_engineering(df:pd.DataFrame, trips):
+def feature_engineering(df: pd.DataFrame, trips):
     """
     Function that calls all feature engineering functions
     """
@@ -23,6 +23,16 @@ def feature_engineering(df:pd.DataFrame, trips):
     features["longest_acceleration_period"] = np.array(longest_increasing_patterns,dtype=np.float32)
 
     return features
+
+
+def async (trips: list):
+    """
+    Uses tsfresh (https://github.com/blue-yonder/tsfresh) to engineer features from time series.
+    :param trips: List of dataframes for trips.
+    :return:
+    """
+
+    print(trips.head(3))
 
 
 def _get_longest_increasing_pattern(trips, threshold=5):
