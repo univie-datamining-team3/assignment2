@@ -23,7 +23,8 @@ class ElkiPipe:
     """
     def __init__(self, elki_path_to_jar=None):
         if elki_path_to_jar is None:
-            self.elki_path_to_jar = os.path.join("models","elki-bundle-0.7.1.jar")
+            src_dir = os.path.join(os.getcwd(), os.pardir, 'src')
+            self.elki_path_to_jar = os.path.join(src_dir, "models","elki-bundle-0.7.1.jar")
 
     def run_elki(self, df:pd.DataFrame, parameters:list, plot_path=None):
         """
@@ -74,9 +75,9 @@ class ElkiPipe:
     def __get_elki_cluster_result(results):
         """ Constructs a dataframe with the cluster labels
         """
-        print(results)
         cleaned_results = pd.DataFrame(columns=["ID","label"])
         for cluster_id, points_in_cluster in enumerate(results.split("Cluster: Cluster")[1:]):
+            #print("points_in_cluster: ", points_in_cluster)
             helper_df = pd.DataFrame(columns=["ID","label"])
 
             # Important for sorting the points to its original order
