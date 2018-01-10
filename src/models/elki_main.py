@@ -32,7 +32,7 @@ def main():
                                                   param_kappa = 20.0)
 
     elif FLAGS.algorithm == "hdbscan":
-        params = elki.get_parameters_for_predecon(param_minpts=100)
+        params = elki.get_parameters_for_hdbscan(param_minpts=100)
 
     results = elki.run_elki(data, params, plot_path=FLAGS.vis_path)
 
