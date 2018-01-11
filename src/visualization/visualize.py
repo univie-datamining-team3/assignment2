@@ -9,6 +9,11 @@ import matplotlib.patches as mpatches
 import matplotlib.dates as mdates
 from sklearn.manifold import TSNE
 from mpl_toolkits.mplot3d import Axes3D
+import matplotlib.pyplot as plt
+import matplotlib.cm as cm
+
+from sklearn.cluster import KMeans
+from sklearn.metrics import silhouette_samples, silhouette_score
 
 
 import gmplot
@@ -304,3 +309,84 @@ def plot_3D(x,y,z,colors=None,color_patches=None,ax=None, title=None):
     if title is not None:
         ax.set_title(str(title))
     ax.scatter(xs=x, ys=y, zs=z, c=colors)
+
+
+def plot_silhouette_scores(data, clustering_labels, figsize=(18, 7)):
+    """
+    Plot silhouette coefficients, this code has been adapted from:
+    http://scikit-learn.org/stable/auto_examples/cluster/plot_kmeans_silhouette_analysis.html
+
+    Parameters
+    ----------
+    data: data matrix
+    clustering_labels: list, of different clustering results
+    """
+
+    X = np.array(data)
+    number_of_clusters = [len(set(i)) for i in clustering_labels]
+    for labels_index, n_clusters in enumerate(list(number_of_clusters)):
+
+        fig, ax = plt.subplots()
+        fig.set_size_inches(figsize)
+
+        # The 1st subplot is the silhouette plot
+        # The silhouette coefficient can range from -1, 1 but in this example all
+        # lie within [-0.1, 1]
+        ax.set_xlim([-0.2, 1])
+        # The (n_clusters+1)*10 is for inserting blank space between silhouette
+        # plots of individual clusters, to demarcate them clearly.
+        ax.set_ylim([0, len(X) + (n_clusters + 1) * 10])
+
+        # Initialize the clusterer with n_clusters value and a random generator
+        # seed of 10 for reproducibility.
+        #clusterer = KMeans(n_clusters=n_clusters, random_state=10)
+        #cluster_labels = clusterer.fit_predict(X)
+        cluster_labels = clustering_labels[labels_index]
+        # The silhouette_score gives the average value for all the samples.
+        # This gives a perspective into the density and separation of the formed
+        # clusters
+        silhouette_avg = silhouette_score(X, cluster_labels)
+        print("For n_clusters =", n_clusters,
+              "The average silhouette_score is :", silhouette_avg)
+
+        # Compute the silhouette scores for each sample
+        sample_silhouette_values = silhouette_samples(X, cluster_labels)
+
+        y_lower = 10
+        for i in range(n_clusters):
+            # Aggregate the silhouette scores for samples belonging to
+            # cluster i, and sort them
+            ith_cluster_silhouette_values = \
+                sample_silhouette_values[cluster_labels == i]
+
+            ith_cluster_silhouette_values.sort()
+
+            size_cluster_i = ith_cluster_silhouette_values.shape[0]
+            y_upper = y_lower + size_cluster_i
+
+            color = cm.spectral(float(i) / n_clusters)
+            ax.fill_betweenx(np.arange(y_lower, y_upper),
+                              0, ith_cluster_silhouette_values,
+                              facecolor=color, edgecolor=color, alpha=0.7)
+
+            # Label the silhouette plots with their cluster numbers at the middle
+            ax.text(-0.05, y_lower + 0.5 * size_cluster_i, str(i))
+
+            # Compute the new y_lower for next plot
+            y_lower = y_upper + 10  # 10 for the 0 samples
+
+        ax.set_title("The silhouette plot for the various clusters.")
+        ax.set_xlabel("The silhouette coefficient values")
+        ax.set_ylabel("Cluster label")
+
+        # The vertical line for average silhouette score of all the values
+        ax.axvline(x=silhouette_avg, color="red", linestyle="--")
+
+        ax.set_yticks([])  # Clear the yaxis labels / ticks
+        ax.set_xticks([-0.1, 0, 0.2, 0.4, 0.6, 0.8, 1])
+
+        ax.set_title(("Silhouette analysis for clustering on sample data "
+                      "with n_clusters = %d" % n_clusters),
+                     fontsize=14, fontweight='bold')
+
+        plt.show()

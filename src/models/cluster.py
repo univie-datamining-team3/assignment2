@@ -23,7 +23,8 @@ class ElkiPipe:
     """
     def __init__(self, elki_path_to_jar=None):
         if elki_path_to_jar is None:
-            self.elki_path_to_jar = os.path.join("models","elki-bundle-0.7.1.jar")
+            src_dir = os.path.join(os.getcwd(), os.pardir, 'src')
+            self.elki_path_to_jar = os.path.join(src_dir, "models","elki-bundle-0.7.1.jar")
 
     def run_elki(self, df:pd.DataFrame, parameters:list, plot_path=None):
         """
@@ -74,9 +75,9 @@ class ElkiPipe:
     def __get_elki_cluster_result(results):
         """ Constructs a dataframe with the cluster labels
         """
-        print(results)
         cleaned_results = pd.DataFrame(columns=["ID","label"])
         for cluster_id, points_in_cluster in enumerate(results.split("Cluster: Cluster")[1:]):
+            #print("points_in_cluster: ", points_in_cluster)
             helper_df = pd.DataFrame(columns=["ID","label"])
 
             # Important for sorting the points to its original order
@@ -266,17 +267,19 @@ class Clustering:
         plt.show()
 
     @staticmethod
-    def calculate_silhouette_score(features, cluster_assignments):
+    def calculate_silhouette_score(features, cluster_assignments, as_numeric=True):
         """
         Returns string with Silhouette Coefficient
         """
         if len(set(cluster_assignments)) > 1:
-            result = ("Silhouette Coefficient: %0.3f"
+            if as_numeric:
+                return  float(metrics.silhouette_score(features, cluster_assignments))
+            else:
+                return ("Silhouette Coefficient: %0.3f"
                       % metrics.silhouette_score(features, cluster_assignments))
         else:
-            result = "Silhouette Coefficient: cannot be calculated"
+            return "Silhouette Coefficient: cannot be calculated"
 
-        return result
 
     @staticmethod
     def get_clustering_performance(features, cluster_assignments, true_labels=None):
@@ -297,9 +300,9 @@ class Clustering:
             summary.append(("V-measure: %0.3f" % metrics.v_measure_score(cluster_assignments, true_labels)))
             summary.append(
                 ("Adjusted MI: %0.3f" % metrics.adjusted_mutual_info_score(true_labels, cluster_assignments)))
-            summary.append(calculate_silhouette_score(features, cluster_assignments))
+            summary.append(calculate_silhouette_score(features, cluster_assignments),as_numeric=False)
         else:
-            summary.append(calculate_silhouette_score(features, cluster_assignments))
+            summary.append(calculate_silhouette_score(features, cluster_assignments), as_numeric=False)
 
         return summary
 
