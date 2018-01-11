@@ -70,7 +70,8 @@ target/
 .ipynb_checkpoints/
 
 # exclude data from source control by default
-/data/
+/data/raw/*
+/data/preprocessed/*
 
 # exclude maps with gps data
 reports/maps/
