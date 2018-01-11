@@ -71,6 +71,7 @@ After that you can download all the data by starting the script from the source 
 python data/make_dataset.py --download True --preprocess True --distance_metric euclidean
 ```
 
+
 This will take a while and depends on your internet connection as a bunch of data
 is downloaded and preprocessed. The preprocessing takes about 20 minutes.
 After that you have several new files in data/preprocessed and data/raw.
