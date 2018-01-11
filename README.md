@@ -4,7 +4,7 @@ dm_mobility_task
 
 # Introduction
 
-Analysis of mobility data gathered via smartphones and modeled with different
+In this project we analyse mobility data gathered via smartphones and model it with different
 clustering techniques. This project was done during the Data Mining course of
 the University of Vienna.
 
@@ -45,7 +45,7 @@ For Windows you should use conda to install the following packages:
 conda create --name test_environment python=3.5 Cython pandas scikit-learn numpy scipy seaborn psutil hdbscan
 ```
 
-The other packages can be install via pip.
+The other packages can be installed via pip.
 
 Now before you can run the [notebooks](https://github.com/univie-datamining-team3/assignment2/blob/master/notebooks) you have to create a .env file in the cloned repository folder assignment2\.env and add the URL and authentication for accessing the data in the following way:
 
