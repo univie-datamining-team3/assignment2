@@ -18,3 +18,4 @@ hdbscan==0.8.11
 sobol-seq==0.1.2
 plotly==2.2.3
 bayesian-optimization==0.6.0
+future==0.16.0

@@ -65,10 +65,10 @@ LOGINNAME=??????
 LOGINPASSWORD =??????
 ```
 
-After that you can download all the data via:
+After that you can download all the data by starting the script from the source folder via:
 
 ```
-src/python make_dataset.py --download True --preprocess True --distance_metric euclidean
+python data/make_dataset.py --download True --preprocess True --distance_metric euclidean
 ```
 
 This will take a while and depends on your internet connection as a bunch of data
