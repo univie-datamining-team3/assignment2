@@ -67,7 +67,7 @@ def plot_gps_heatmap(tracks, file_name):
             longitudes = pd.concat([longitudes, longitude_i])
 
     gmap = gmplot.GoogleMapPlotter.from_geocode("Vienna")
-    gmap.heatmap(list(latitudes[0]), list(longitudes[0]))
+    gmap.heatmap(list(latitudes[0]), list(longitudes[0]), radius=1)
 
     map_dir = os.path.join(get_vis_dir(),"maps")
     setup_directory(map_dir)
