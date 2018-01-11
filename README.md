@@ -46,6 +46,10 @@ conda create --name test_environment python=3.5 Cython pandas scikit-learn numpy
 ```
 
 The other packages can be installed via pip.
+Note that if you want to run the notebook on Bayesian optimization of t-SNE, you have to install the repository "coranking" directly from its repository:
+```
+pip install git+https://github.com/samueljackson92/coranking.git
+```
 
 Now before you can run the [notebooks](https://github.com/univie-datamining-team3/assignment2/blob/master/notebooks) you have to create a .env file in the cloned repository folder assignment2\\.env and add the URL and authentication for accessing the data in the following way:
 
