@@ -267,17 +267,19 @@ class Clustering:
         plt.show()
 
     @staticmethod
-    def calculate_silhouette_score(features, cluster_assignments):
+    def calculate_silhouette_score(features, cluster_assignments, as_numeric=True):
         """
         Returns string with Silhouette Coefficient
         """
         if len(set(cluster_assignments)) > 1:
-            result = ("Silhouette Coefficient: %0.3f"
+            if as_numeric:
+                return  float(metrics.silhouette_score(features, cluster_assignments))
+            else:
+                return ("Silhouette Coefficient: %0.3f"
                       % metrics.silhouette_score(features, cluster_assignments))
         else:
-            result = "Silhouette Coefficient: cannot be calculated"
+            return "Silhouette Coefficient: cannot be calculated"
 
-        return result
 
     @staticmethod
     def get_clustering_performance(features, cluster_assignments, true_labels=None):
@@ -298,9 +300,9 @@ class Clustering:
             summary.append(("V-measure: %0.3f" % metrics.v_measure_score(cluster_assignments, true_labels)))
             summary.append(
                 ("Adjusted MI: %0.3f" % metrics.adjusted_mutual_info_score(true_labels, cluster_assignments)))
-            summary.append(calculate_silhouette_score(features, cluster_assignments))
+            summary.append(calculate_silhouette_score(features, cluster_assignments),as_numeric=False)
         else:
-            summary.append(calculate_silhouette_score(features, cluster_assignments))
+            summary.append(calculate_silhouette_score(features, cluster_assignments), as_numeric=False)
 
         return summary
 
