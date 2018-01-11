@@ -994,8 +994,8 @@ class Preprocessor:
         data_frames : a list of  pandas DataFrame's in a dictionary
         """
 
-        file_path = os.path.join(Preprocessor.get_data_dir(), dir_name)
-        tar_file_names = Preprocessor.get_file_names(file_path)
+        file_path = os.path.join(DatasetDownloader.get_data_dir(), dir_name)
+        tar_file_names = DatasetDownloader.get_file_names(file_path)
         dfs = []
         for tar_name in tar_file_names:
             path_to_tar_file = os.path.join(file_path, tar_name)
