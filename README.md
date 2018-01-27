@@ -55,9 +55,9 @@ Now before you can run the [notebooks](https://github.com/univie-datamining-team
 
 ```
 # Key for mobility data
-KEY_LUKAS=868049020858898
-KEY_RAPHAEL=358568053229914
-KEY_MORITZ=355007075245007
+KEY_LUKAS=??????
+KEY_RAPHAEL=??????
+KEY_MORITZ=??????
 
 # Authentication
 URL =??????
